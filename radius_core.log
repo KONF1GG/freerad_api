@@ -154,3 +154,40 @@
 2025-08-04 03:56:50,122 - rabbitmq_client - INFO - RabbitMQ connection established successfully
 2025-08-04 03:56:50,122 - main - INFO - RabbitMQ connection established
 2025-08-04 03:56:55,681 - main - INFO - Shutting down Radius Core service...
+2025-08-04 04:42:00,539 - main - INFO - Starting Radius Core service...
+2025-08-04 04:42:00,561 - redis_client - INFO - Redis connection established successfully
+2025-08-04 04:42:00,565 - main - INFO - Redis connection established
+2025-08-04 04:42:00,615 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 04:42:00,615 - main - INFO - RabbitMQ connection established
+2025-08-04 04:42:02,172 - services - INFO - Обработка аккаунтинга: Interim-Update для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:42:05,794 - services - INFO - Обработка Interim-Update для существующей сессии
+2025-08-04 04:43:10,397 - services - ERROR - Acct_Input_Octets: 17398815931 -> 16074891522, Δ=-1323924409Отрицательная дельта трафика для ab217a26136ef73e401058a5c6d54b90: ; Acct_Output_Octets: 368970238415 -> 339091091118, Δ=-29879147297Отрицательная дельта трафика для ab217a26136ef73e401058a5c6d54b90: ; Acct_Input_Packets: 119081973 -> 109549557, Δ=-9532416Отрицательная дельта трафика для ab217a26136ef73e401058a5c6d54b90: ; Acct_Output_Packets: 277280302 -> 255290690, Δ=-21989612
+2025-08-04 04:43:10,406 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:10,434 - services - INFO - Трафик (дельта) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:10,435 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:10,435 - services - INFO - Успешный аккаунтинг: Interim-Update
+2025-08-04 04:43:10,509 - main - INFO - Shutting down Radius Core service...
+2025-08-04 04:43:11,692 - main - INFO - Starting Radius Core service...
+2025-08-04 04:43:11,710 - redis_client - INFO - Redis connection established successfully
+2025-08-04 04:43:11,713 - main - INFO - Redis connection established
+2025-08-04 04:43:11,766 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 04:43:11,766 - main - INFO - RabbitMQ connection established
+2025-08-04 04:43:13,081 - main - INFO - Shutting down Radius Core service...
+2025-08-04 04:43:23,057 - main - INFO - Starting Radius Core service...
+2025-08-04 04:43:23,075 - redis_client - INFO - Redis connection established successfully
+2025-08-04 04:43:23,079 - main - INFO - Redis connection established
+2025-08-04 04:43:23,133 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 04:43:23,133 - main - INFO - RabbitMQ connection established
+2025-08-04 04:43:23,505 - services - INFO - Обработка аккаунтинга: Interim-Update для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:25,706 - services - INFO - Обработка Interim-Update для существующей сессии
+2025-08-04 04:43:45,031 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:45,046 - services - INFO - Трафик (дельта) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:45,046 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:45,046 - services - INFO - Успешный аккаунтинг: Interim-Update
+2025-08-04 04:43:47,558 - services - INFO - Обработка аккаунтинга: Interim-Update для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:43:49,259 - services - INFO - Обработка Interim-Update для существующей сессии
+2025-08-04 04:44:41,516 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:44:41,545 - services - INFO - Трафик (дельта) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:44:41,557 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 04:44:41,557 - services - INFO - Успешный аккаунтинг: Interim-Update
+2025-08-04 04:44:41,632 - aio_pika.robust_connection - INFO - Connection to amqp://leo:******@192.168.110.52:5672/ closed. Reconnecting after 5 seconds.

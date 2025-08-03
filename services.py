@@ -238,7 +238,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                 session_new.Acct_Start_Time = datetime.fromtimestamp(
                     event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
                 )
-                session_new.Acct_Stop_Time = session_new.Acct_Start_Time
+                session_new.Acct_Update_Time = session_new.Acct_Start_Time
                 tasks.append(ch_save_traffic(session_new, None))
 
             if not is_service_session:
