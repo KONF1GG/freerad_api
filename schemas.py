@@ -109,7 +109,7 @@ class SessionData(BaseAccountingData):
     auth_type: str = "UNKNOWN"
     onu_mac: str = ""
     contract: str = ""
-    service: str = ""
+    service: Optional[str] = ""
 
     GMT: Optional[int] = 5
     Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
