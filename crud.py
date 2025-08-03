@@ -134,7 +134,7 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
-            result = await redis.get(redis_key)
+            result = await redis.execute_command("JSON.GET", redis_key)
             if not result:
                 logger.debug(f"No data found for key: {redis_key}")
                 return None
