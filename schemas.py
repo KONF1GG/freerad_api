@@ -107,7 +107,7 @@ class AccountingData(BaseAccountingData):
 class SessionData(BaseAccountingData):
     login: Optional[str] = ""
     auth_type: Optional[str] = "UNKNOWN"
-    onu_mac: Optional[str] = ""
+    onu_mac: Optional[str] = None
     contract: Optional[str] = ""
     service: Optional[str] = ""
 
