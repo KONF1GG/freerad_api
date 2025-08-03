@@ -6,9 +6,9 @@ REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "10"))
 
 # RabbitMQ Configuration
 AMQP_URL: str = os.getenv("AMQP_URL", "")
-AMQP_EXCHANGE: str = os.getenv("AMQP_EXCHANGE", "sessions_traffic_exchange_test")
-AMQP_SESSION_QUEUE: str = os.getenv("AMQP_SESSION_QUEUE", "session_queue_test")
-AMQP_TRAFFIC_QUEUE: str = os.getenv("AMQP_TRAFFIC_QUEUE", "traffic_queue_test")
+AMQP_EXCHANGE: str = os.getenv("AMQP_EXCHANGE", "sessions_traffic_exchange")
+AMQP_SESSION_QUEUE: str = os.getenv("AMQP_SESSION_QUEUE", "session_queue")
+AMQP_TRAFFIC_QUEUE: str = os.getenv("AMQP_TRAFFIC_QUEUE", "traffic_queue")
 
 # Radius Configuration
 RADIUS_SESSION_PREFIX: str = "radius:session:"
