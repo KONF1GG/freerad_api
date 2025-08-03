@@ -2,9 +2,10 @@ import aio_pika
 import json
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 from aio_pika import DeliveryMode, ExchangeType
 from config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_QUEUE
+from schemas import RABBIT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -77,17 +78,18 @@ class RabbitMQClient:
         await traffic_queue.bind(self._exchange, routing_key=AMQP_TRAFFIC_QUEUE)
 
     async def send_message(
-        self, routing_key: str, message: Dict[str, Any], persistent: bool = True
+        self, routing_key: str, message: RABBIT_MODELS, persistent: bool = True
     ) -> bool:
         """Отправить сообщение в RabbitMQ"""
         try:
-            channel = await self.get_channel()
             if not self._exchange:
                 logger.error("Exchange not initialized")
                 return False
 
-            # Подготавливаем сообщение
-            body = json.dumps(message, ensure_ascii=False, default=str).encode("utf-8")
+            # Подготавливаем сообщение с алиасами (дефисами)
+            body = json.dumps(
+                message.model_dump(by_alias=True), ensure_ascii=False, default=str
+            ).encode("utf-8")
 
             message_obj = aio_pika.Message(
                 body=body,
@@ -145,7 +147,7 @@ async def get_rabbitmq_client() -> RabbitMQClient:
     return _rabbitmq_client
 
 
-async def rmq_send_message(routing_key: str, message: Dict[str, Any]) -> bool:
+async def rmq_send_message(routing_key: str, message: RABBIT_MODELS) -> bool:
     """Отправить сообщение в RabbitMQ"""
     client = await get_rabbitmq_client()
     return await client.send_message(routing_key, message)

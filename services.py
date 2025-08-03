@@ -1,21 +1,26 @@
+import asyncio
 import re
 import time
 import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from schemas import AccountingData, AccountingResponse
+
+from pydantic import ValidationError
+from crud import (
+    enrich_session_with_login,
+    find_login_by_session,
+    process_traffic_data,
+    save_session_to_redis,
+    delete_session_from_redis,
+)
+from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
 from redis_client import get_redis
 from rabbitmq_client import rmq_send_message
-from utils import (
-    parse_event,
-    find_login_by_session,
-    enrich_session_with_login,
-    process_traffic_data,
-)
+from utils import now_str
+
 from config import (
     RADIUS_SESSION_PREFIX,
-    SESSION_TEMPLATE,
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
 )
@@ -24,53 +29,39 @@ import metrics
 logger = logging.getLogger(__name__)
 
 
-async def save_session_to_redis(session_data: Dict[str, Any], redis_key: str) -> bool:
-    """Сохранение сессии в Redis"""
-    try:
-        redis = await get_redis()
-        await redis.set(redis_key, json.dumps(session_data, default=str))
-        # Устанавливаем TTL на 24 часа
-        await redis.expire(redis_key, 86400)
-        logger.debug(f"Session saved to Redis: {redis_key}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to save session to Redis: {e}")
-        return False
-
-
-async def delete_session_from_redis(redis_key: str) -> bool:
-    """Удаление сессии из Redis"""
-    try:
-        redis = await get_redis()
-        result = await redis.delete(redis_key)
-        logger.debug(f"Session deleted from Redis: {redis_key}, result: {result}")
-        return result > 0
-    except Exception as e:
-        logger.error(f"Failed to delete session from Redis: {e}")
-        return False
-
-
-async def get_session_from_redis(redis_key: str) -> Optional[Dict[str, Any]]:
-    """Получение сессии из Redis"""
+async def get_session_from_redis(redis_key: str) -> Optional[SessionData]:
+    """
+    Получение сессии из Redis и преобразование в модель RedisSessionData.
+    """
     redis = await get_redis()
     try:
         session_data = await redis.execute_command("JSON.GET", redis_key)
-        if session_data:
-            return json.loads(session_data)
+        if not session_data:
+            logger.debug(f"No session data found for key: {redis_key}")
+            return None
+
+        parsed_data = json.loads(session_data)
+        session = SessionData(**parsed_data)
+        logger.debug(f"Successfully retrieved session for key: {redis_key}")
+        return session
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON for key {redis_key}: {e}")
+        return None
+    except ValidationError as e:
+        logger.error(f"Invalid session data for key {redis_key}: {e}")
         return None
     except Exception as e:
-        logger.error(f"Failed to get session from RedisJSON: {e}")
+        logger.error(f"Failed to get session from Redis for key {redis_key}: {e}")
         return None
 
 
-async def send_coa_session_kill(session_req: Dict[str, Any]) -> bool:
+async def send_coa_session_kill(session_req) -> bool:
     """Отправка команды на убийство сессии через CoA"""
     ...
 
 
-async def send_coa_session_set(
-    session_req: Dict[str, Any], attributes: Dict[str, Any]
-) -> bool:
+async def send_coa_session_set(session_req, attributes: Dict[str, Any]) -> bool:
     """Отправка команды на обновление атрибутов сессии через CoA"""
     ...
 
@@ -81,36 +72,21 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
     status = "success"
 
     try:
-        # Конвертируем в словарь
-        session_req = data.dict(exclude_none=True)
-        packet_type = session_req.get("Acct_Status_Type", "UNKNOWN")
-        session_unique_id = session_req.get("Acct_Unique_Session_Id")
+        session_req = data
+        packet_type = session_req.Acct_Status_Type
+        session_unique_id = session_req.Acct_Unique_Session_Id
+        event_time = session_req.Event_Timestamp
+        event_timestamp = int(
+            session_req.Event_Timestamp.astimezone(timezone.utc).timestamp()
+        )
 
         logger.info(
-            f"Processing accounting packet: {packet_type} for session {session_unique_id}"
+            f"Обработка аккаунтинга: {packet_type} для сессии {session_unique_id}"
         )
 
         # Записываем метрики
         metrics.record_packet("accounting", "received", packet_type)
         metrics.record_accounting_packet(packet_type, "UNKNOWN")
-
-        # Валидация обязательных полей
-        if not session_unique_id:
-            logger.error("Missing Acct-Unique-Session-Id")
-            metrics.record_error("missing_session_id", "accounting")
-            return AccountingResponse(
-                action="log", reason="missing session id", status="error"
-            )
-
-        event_timestamp_str = session_req.get("Event_Timestamp")
-        if not event_timestamp_str:
-            logger.error("Missing Event-Timestamp")
-            metrics.record_error("missing_event_timestamp", "accounting")
-            return AccountingResponse(
-                action="log", reason="missing event timestamp", status="error"
-            )
-
-        event_timestamp = parse_event(event_timestamp_str)
 
         # Получаем активную сессию из Redis
         redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
@@ -118,296 +94,239 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
 
         # Ищем логин
         login = await find_login_by_session(session_req)
-        if login and isinstance(login, dict):
-            session_req = enrich_session_with_login(session_req, login)
-        else:
-            logger.warning("Login not found or invalid")
-            session_req = enrich_session_with_login(session_req, {})
 
-        # Обрабатываем счетчики трафика
-        session_req = process_traffic_data(session_req)
+        # Добавляем данные логина в данные сессии
+        session_req = await enrich_session_with_login(session_req, login)
 
-        is_service_session = bool(session_req.get("ERX_Service_Session"))
-        service = session_req.get("ERX_Service_Session", "")
+        service = session_req.ERX_Service_Session
+        is_service_session = bool(service)
 
         # Обработка сервисной сессии
-        if is_service_session and login and isinstance(login, dict):
-            servicecats = login.get("servicecats", {})
-            if isinstance(servicecats, dict):
-                internet_service = servicecats.get("internet", {})
-                if isinstance(internet_service, dict):
-                    timeto = internet_service.get("timeto")
-                    speed = internet_service.get("speed", 0)
+        if service and login:
+            timeto = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "timeto",
+                None,
+            )
+            speed = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "speed",
+                None,
+            )
 
-                    # Проверка срока действия услуги
-                    if timeto is not None:
-                        try:
-                            timeto_float = float(timeto)
-                            if datetime.fromtimestamp(
-                                timeto_float, tz=timezone.utc
-                            ) < datetime.now(tz=timezone.utc):
-                                logger.warning(
-                                    f"Service expired for login {login.get('login', 'unknown')}"
-                                )
-                                await send_coa_session_kill(session_req)
-                                return AccountingResponse(
-                                    action="kill",
-                                    reason="service expired",
-                                    session_id=session_unique_id,
-                                )
-                        except (ValueError, TypeError) as e:
-                            logger.error(f"Invalid timeto value: {timeto}, error: {e}")
+            # Проверяем текущее время для сравнения со сроком действия услуги
+            now_timestamp = datetime.now(tz=timezone.utc).timestamp()
+            service_should_be_blocked = False
 
-                    # Проверка соответствия скорости
-                    match = re.search(r"\(([\d.]+k)\)", service)
-                    if match:
-                        service_speed_mb = (
-                            float(match.group(1).replace("k", "")) / 1000
-                        )  # k -> Mb
-                        expected_speed_mb = float(speed) * 1.1 if speed else 0
-                        if abs(service_speed_mb - expected_speed_mb) >= 0.01:
-                            logger.warning(
-                                f"Speed mismatch: expected {expected_speed_mb} Mb, got {service_speed_mb} Mb"
-                            )
-                            # Обновляем параметры сессии
-                            coa_attributes = {
-                                "ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)
-                            }
-                            await send_coa_session_set(session_req, coa_attributes)
-                            return AccountingResponse(
-                                action="update",
-                                reason="speed mismatch corrected",
-                                coa_attributes=coa_attributes,
-                                session_id=session_unique_id,
-                            )
-                    elif "NOINET-NOMONEY" in service:
+            if timeto is not None:
+                try:
+                    timeto_float = float(timeto)
+                    service_should_be_blocked = timeto_float < now_timestamp
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid timeto value: {timeto}, error: {e}")
+
+            # Анализируем состояние с роутера
+            router_says_blocked = "NOINET-NOMONEY" in service
+
+            # Сравниваем состояние с роутера с ожидаемым состоянием
+            if router_says_blocked and service_should_be_blocked:
+                logger.debug(
+                    f"Сервис корректно заблокирован для логина {getattr(login, 'login', 'unknown')}"
+                )
+            elif router_says_blocked and not service_should_be_blocked:
+                # Роутер заблокировал, но услуга должна работать - разблокируем
+                logger.warning(
+                    f"Роутер неправильно заблокировал услугу для логина {getattr(login, 'login', 'unknown')}, разблокировка"
+                )
+
+                # Устанавливаем правильную скорость
+                if speed:
+                    expected_speed_mb = float(speed) * 1.1
+                    coa_attributes = {
+                        "ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)
+                    }
+                    await send_coa_session_set(session_req, coa_attributes)
+
+                    return AccountingResponse(
+                        action="update",
+                        reason="router incorrectly blocked service, unblocked",
+                        coa_attributes=coa_attributes,
+                        session_id=session_unique_id,
+                    )
+            elif not router_says_blocked and service_should_be_blocked:
+                # Роутер не заблокировал, но услуга должна быть заблокирована - блокируем
+                logger.warning(
+                    f"Услуга {getattr(login, 'login', 'unknown')} должна быть заблокирована, но роутер этого не сделал"
+                )
+                await send_coa_session_kill(session_req)
+
+                return AccountingResponse(
+                    action="kill",
+                    reason="service expired",
+                    session_id=session_unique_id,
+                )
+            else:
+                # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
+                match = re.search(r"\(([\d.]+k)\)", service)
+                if match:
+                    service_speed_mb = (
+                        float(match.group(1).replace("k", "")) / 1000
+                    )  # k -> Mb
+                    expected_speed_mb = float(speed) * 1.1 if speed else 0
+                    if abs(service_speed_mb - expected_speed_mb) >= 0.01:
                         logger.warning(
-                            f"Service blocked for login {login.get('login', 'unknown')}"
+                            f"Неправильная скорость: Ожидалось {expected_speed_mb} Mb, получено {service_speed_mb} Mb"
                         )
-                        await send_coa_session_kill(session_req)
+                        # Обновляем параметры сессии
+                        coa_attributes = {
+                            "ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)
+                        }
+                        await send_coa_session_set(session_req, coa_attributes)
+
                         return AccountingResponse(
-                            action="kill",
-                            reason="service blocked",
+                            action="update",
+                            reason="speed mismatch corrected",
+                            coa_attributes=coa_attributes,
                             session_id=session_unique_id,
                         )
 
-        # Создаем новую сессию на основе шаблона
-        session_new = SESSION_TEMPLATE.copy()
-        session_new.update(session_req)
+        session_new = SessionData(**session_req.model_dump(by_alias=True))
+
+        # Соединяем счетчики
+        session_new = await process_traffic_data(session_new)
 
         # Проверка смены логина
         if (
             session_stored
             and login
-            and isinstance(login, dict)
-            and session_stored.get("login") != login.get("login")
+            and hasattr(login, "login")
+            and session_stored.login != login.login
         ):
             logger.info(
-                f"Login changed from {session_stored.get('login', 'unknown')} "
-                f"to {login.get('login', 'unknown')}, killing session"
+                f"Логин изменился с {session_stored.login} "
+                f"на {login.login}, убиваем сессию"
             )
-            await send_coa_session_kill(session_stored)
+            await send_coa_session_kill(session_stored.model_dump(by_alias=True))
 
         # Обработка по типу пакета
+        # Если пакет типа Start, создаем новую сессию
         if packet_type == "Start":
-            logger.info("Processing START packet")
-            session_new["Acct-Start-Time"] = event_timestamp
-            session_new["Acct-Session-Time"] = 0
+            logger.info("Обработка пакета START")
+            session_new.Acct_Start_Time = event_time
+            session_new.Acct_Session_Time = 0
 
-            await save_session_to_redis(session_new, redis_key)
-            await ch_save_session(session_new)
+            await asyncio.gather(
+                save_session_to_redis(session_new, redis_key),
+                ch_save_session(session_new),
+            )
 
+        # Если пакет типа Interim-Update
         elif packet_type == "Interim-Update":
-            if session_stored:
-                logger.info("Processing Interim-Update for existing session")
-                session_new = session_stored | session_req
-                session_new["Acct-Session-Time"] = int(
-                    session_req.get("Acct_Session_Time", 0)
-                )
+            # Если сессия уже существует, обновляем ее
 
-                if not is_service_session:
-                    await save_session_to_redis(session_new, redis_key)
-                await ch_save_session(session_new)
-                await ch_save_traffic(session_new, session_stored)
+            tasks = []
+            if session_stored:
+                logger.info("Обработка Interim-Update для существующей сессии")
+                session_stored_dict = session_stored.model_dump(by_alias=True)
+                session_stored_dict.update(session_new.model_dump(by_alias=True))
+                session_new = SessionData(**session_stored_dict)
+
+                tasks.append(ch_save_traffic(session_new, session_stored))
+            # Если сессия не существует, создаем новую
             else:
-                logger.warning(
-                    "Interim-Update without existing session, creating new one"
+                logger.warning("Interim-Update без активной сессии, создаем новую")
+                session_new.Acct_Start_Time = datetime.fromtimestamp(
+                    event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
                 )
-                session_new["Acct-Start-Time"] = event_timestamp - int(
-                    session_req.get("Acct_Session_Time", 0)
-                )
-                session_new["Acct-Session-Time"] = int(
-                    session_req.get("Acct_Session_Time", 0)
-                )
+                session_new.Acct_Stop_Time = session_new.Acct_Start_Time
+                tasks.append(ch_save_traffic(session_new, None))
 
-                if not is_service_session:
-                    await save_session_to_redis(session_new, redis_key)
-                await ch_save_session(session_new)
-                await ch_save_traffic(session_new, session_stored)
+            if not is_service_session:
+                tasks.append(save_session_to_redis(session_new, redis_key))
+            tasks.append(ch_save_session(session_new))
+            await asyncio.gather(*tasks)
 
+        # Если пакет типа Stop, завершаем сессию
         elif packet_type == "Stop":
-            logger.info("Processing STOP packet")
-            session_new["Acct-Start-Time"] = (
-                event_timestamp - int(session_req.get("Acct_Session_Time", 0))
-                if not session_stored
-                else session_stored.get("Acct-Start-Time", event_timestamp)
-            )
-            session_new["Acct-Session-Time"] = int(
-                session_req.get("Acct_Session_Time", 0)
-            )
-            session_new["Acct_Terminate_Cause"] = session_req.get(
-                "Acct_Terminate_Cause"
-            )
+            logger.info("Обработка пакета STOP")
+            if not session_stored:
+                session_new.Acct_Start_Time = datetime.fromtimestamp(
+                    event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
+                )
+            else:
+                session_new.Acct_Start_Time = session_stored.Acct_Start_Time
 
-            await ch_save_session(session_new)
-            await ch_save_traffic(session_new, session_stored)
-
-            if session_stored:
-                await delete_session_from_redis(redis_key)
+            await asyncio.gather(
+                ch_save_session(session_new),
+                ch_save_traffic(
+                    session_new,
+                    session_stored if session_stored else None,
+                ),
+                delete_session_from_redis(redis_key)
+                if session_stored
+                else asyncio.sleep(0),
+            )
 
         else:
-            logger.error(f"Unknown packet type: {packet_type}")
+            logger.error(f"Неизвестный тип пакета: {packet_type}")
             return AccountingResponse(
                 action="log",
-                reason=f"unknown packet type: {packet_type}",
+                reason=f"Неизвестный тип пакета: {packet_type}",
                 status="error",
             )
 
-        logger.info(f"Accounting packet processed successfully: {packet_type}")
+        logger.info(f"Успешный аккаунтинг: {packet_type}")
         return AccountingResponse(
             action="noop", reason="processed successfully", session_id=session_unique_id
         )
 
     except Exception as e:
         status = "error"
-        logger.error(f"Error processing accounting: {e}", exc_info=True)
+        logger.error(f"Ошибка при обработке аккаунтинга: {e}", exc_info=True)
         metrics.record_error("accounting_exception", "accounting")
         return AccountingResponse(
-            action="log", reason=f"processing error: {str(e)}", status="error"
+            action="log", reason=f"Ошибка обработки: {str(e)}", status="error"
         )
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("accounting", exec_time, status)
-        logger.debug(f"Accounting processing took {exec_time:.3f}s, status: {status}")
+        logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
-async def ch_save_session(session_data: Dict[str, Any], stoptime: bool = False) -> bool:
+async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> bool:
     """Сохранение сессии в ClickHouse через RabbitMQ"""
     start_time = time.time()
     status = "success"
     logger.info(
-        f"Сохранение сессии в ClickHouse: {session_data.get('Acct_Unique_Session_Id')}"
+        f"Сохранение сессии в ClickHouse: {session_data.Acct_Unique_Session_Id}"
     )
 
     try:
-        columns = [
-            "login",
-            "onu_mac",
-            "contract",
-            "packet_type",
-            "auth_type",
-            "Acct-Status-Type",
-            "service",
-            "Acct-Session-Id",
-            "Acct-Unique-Session-Id",
-            "Acct-Start-Time",
-            "Acct-Stop-Time",
-            "User-Name",
-            "NAS-IP-Address",
-            "NAS-Port-Id",
-            "NAS-Port-Type",
-            "Calling-Station-Id",
-            "Acct-Terminate-Cause",
-            "Service-Type",
-            "Framed-Protocol",
-            "Framed-IP-Address",
-            "Framed-IPv6-Prefix",
-            "Delegated-IPv6-Prefix",
-            "Acct-Session-Time",
-            "Acct-Input-Octets",
-            "Acct-Output-Octets",
-            "Acct-Input-Packets",
-            "Acct-Output-Packets",
-            "ERX-IPv6-Acct-Input-Octets",
-            "ERX-IPv6-Acct-Output-Octets",
-            "ERX-IPv6-Acct-Input-Packets",
-            "ERX-IPv6-Acct-Output-Packets",
-            "ERX-IPv6-Acct-Input-Gigawords",
-            "ERX-IPv6-Acct-Output-Gigawords",
-            "ERX-Virtual-Router-Name",
-            "ERX-Service-Session",
-            "ADSL-Agent-Circuit-Id",
-            "ADSL-Agent-Remote-Id",
-        ]
-
-        # Копируем данные сессии для обработки
-        session = session_data.copy()
-
-        # Обработка времени начала сессии
-        if isinstance(session.get("Acct-Start-Time"), (int, float)):
-            session["Acct-Start-Time"] = datetime.fromtimestamp(
-                session["Acct-Start-Time"], tz=timezone.utc
-            ).strftime("%Y-%m-%d %H:%M:%S")
-
-        event_timestamp_str = session.get("Event_Timestamp")
+        if session_data.Event_Timestamp:
+            event_time = session_data.Event_Timestamp
+        else:
+            event_time = datetime.now(tz=timezone.utc)
+        session_data.Acct_Update_Time = event_time
         if not stoptime:
             # Активная сессия, не заполняем Stop-Time
             logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
-            session["Acct-Stop-Time"] = None
-            session["Acct-Update-Time"] = datetime.now(tz=timezone.utc).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            session_data.Acct_Stop_Time = None
         else:
-            if event_timestamp_str:
-                event_timestamp = parse_event(event_timestamp_str)
-                session["Acct-Stop-Time"] = datetime.fromtimestamp(
-                    event_timestamp, tz=timezone.utc
-                ).strftime("%Y-%m-%d %H:%M:%S")
-                session["Acct-Update-Time"] = datetime.fromtimestamp(
-                    event_timestamp, tz=timezone.utc
-                ).strftime("%Y-%m-%d %H:%M:%S")
-                logger.debug(
-                    f"Сессия будет остановлена: {session.get('Acct_Unique_Session_Id')}"
-                )
-            else:
-                logger.debug(
-                    f"Сессия будет остановлена без Event-Timestamp: {session.get('Acct_Unique_Session_Id')}"
-                )
-                session["Acct-Stop-Time"] = datetime.now(tz=timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                session["Acct-Update-Time"] = session["Acct-Stop-Time"]
+            session_data.Acct_Stop_Time = event_time
+            logger.debug(
+                f"Сессия будет остановлена: {session_data.Acct_Unique_Session_Id}"
+            )
 
-        # Обеспечиваем правильное форматирование всех полей
-        session["Framed-Protocol"] = session.get("Framed-Protocol", "")
-        session["Framed-IPv6-Prefix"] = session.get("Framed_IPv6_Prefix", "")
-        session["Delegated-IPv6-Prefix"] = session.get("Delegated_IPv6_Prefix", "")
-        session["ERX-Service-Session"] = session.get("ERX_Service_Session", "")
-        session["ADSL-Agent-Circuit-Id"] = session.get("ADSL_Agent_Circuit_Id", "")
-        session["ADSL-Agent-Remote-Id"] = session.get("ADSL_Agent_Remote_Id", "")
-        session["packet_type"] = session.get("Acct_Status_Type")
-
-        session["ERX-IPv6-Acct-Input-Gigawords"] = session.get(
-            "ERX-IPv6-Acct-Input-Gigawords", 0
-        )
-        session["ERX-IPv6-Acct-Output-Gigawords"] = session.get(
-            "ERX-IPv6-Acct-Output-Gigawords", 0
-        )
-
-        row = [session.get(x) for x in columns]
-        columns.append("GMT")
-        row.append(5)
-
-        result = await rmq_send_message(AMQP_SESSION_QUEUE, session)
+        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
         if result:
             logger.info(
-                f"Сессия отправлена в очередь session_queue: {session.get('Acct_Unique_Session_Id')}"
+                f"Сессия отправлена в очередь session_queue: {session_data.Acct_Unique_Session_Id}"
             )
         return result
     except Exception as e:
         status = "error"
         logger.error(
-            f"Ошибка при сохранении сессии {session_data.get('Acct_Unique_Session_Id')}: {e}"
+            f"Ошибка при сохранении сессии {session_data.Acct_Unique_Session_Id}: {e}"
         )
         metrics.record_error("clickhouse_save_session_error", "ch_save_session")
         return False
@@ -417,76 +336,72 @@ async def ch_save_session(session_data: Dict[str, Any], stoptime: bool = False) 
 
 
 async def ch_save_traffic(
-    session_new: Dict[str, Any], session_stored: Optional[Dict[str, Any]] = None
+    session_new: SessionData, session_stored: Optional[SessionData] = None
 ) -> bool:
     """Сохранение трафика в ClickHouse через RabbitMQ"""
     start_time = time.time()
     status = "success"
 
     try:
-        columns = [
-            "Acct_Input_Octets",
-            "Acct_Output_Octets",
-            "Acct_Input_Packets",
-            "Acct_Output_Packets",
-            "ERX-IPv6-Acct-Input-Octets",
-            "ERX-IPv6-Acct-Output-Octets",
-            "ERX-IPv6-Acct-Input-Packets",
-            "ERX-IPv6-Acct-Output-Packets",
+        # Определяем поля трафика и их алиасы
+        traffic_fields = [
+            ("Acct_Input_Octets", "Acct-Input-Octets"),
+            ("Acct_Output_Octets", "Acct-Output-Octets"),
+            ("Acct_Input_Packets", "Acct-Input-Packets"),
+            ("Acct_Output_Packets", "Acct-Output-Packets"),
+            ("ERX_IPv6_Acct_Input_Octets", "ERX-IPv6-Acct-Input-Octets"),
+            ("ERX_IPv6_Acct_Output_Octets", "ERX-IPv6-Acct-Output-Octets"),
+            ("ERX_IPv6_Acct_Input_Packets", "ERX-IPv6-Acct-Input-Packets"),
+            ("ERX_IPv6_Acct_Output_Packets", "ERX-IPv6-Acct-Output-Packets"),
         ]
 
-        traffic_data = {
-            "Acct-Unique-Session-Id": session_new.get("Acct_Unique_Session_Id", ""),
-            "login": session_new.get("login", ""),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Базовые данные с алиасами
+        traffic_data: Dict[str, Any] = {
+            "Acct-Unique-Session-Id": session_new.Acct_Unique_Session_Id,
+            "login": session_new.login,
+            "timestamp": now_str(),
         }
 
-        if session_stored:
-            logger.debug(
-                f"Вычисляем дельту трафика для сессии: {session_new.get('Acct_Unique_Session_Id')}"
-            )
-            negative_deltas = []
-            for col in columns:
-                new_val = session_new.get(col, 0) or 0
-                stored_val = session_stored.get(col, 0) or 0
+        # Добавляем трафик (дельта или полный) с алиасами
+        negative_deltas = []
+        for field, alias in traffic_fields:
+            new_val = getattr(session_new, field, 0) or 0
+
+            if session_stored:
+                stored_val = getattr(session_stored, field, 0) or 0
                 delta = new_val - stored_val
-                traffic_data[col] = delta
                 if delta < 0:
                     negative_deltas.append(
-                        f"{col}: {stored_val} -> {new_val}, Δ={delta}"
+                        f"{field}: {stored_val} -> {new_val}, Δ={delta}"
                     )
+                    delta = 0
+                traffic_data[alias] = delta
+            else:
+                traffic_data[alias] = new_val
 
-            if negative_deltas:
-                logger.error(
-                    f"Отрицательная дельта трафика для {session_new.get('Acct_Unique_Session_Id')}: {'; '.join(negative_deltas)}"
-                )
-        else:
-            logger.debug(
-                f"Сохраняем полный трафик новой сессии: {session_new.get('Acct_Unique_Session_Id')}"
-            )
-            for col in columns:
-                traffic_data[col] = session_new.get(col, 0) or 0
-
-        total_input = traffic_data.get("Acct_Input_Octets", 0)
-        total_output = traffic_data.get("Acct_Output_Octets", 0)
-        total_traffic = total_input + total_output
-
-        if total_traffic > 0:
-            logger.debug(
-                f"Трафик для {session_new.get('Acct_Unique_Session_Id')}: "
-                f"вход={total_input}, выход={total_output}, всего={total_traffic} байт"
+        if negative_deltas:
+            logger.error(
+                f"Отрицательная дельта трафика для {session_new.Acct_Unique_Session_Id}: "
+                f"; ".join(negative_deltas)
             )
 
-        result = await rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_data)
+        traffic_model = TrafficData(**traffic_data)
+
+        # Отправляем в RabbitMQ
+        result = await rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model)
+
         if result:
+            action = "дельта" if session_stored else "полный"
             logger.info(
-                f"Трафик отправлен в очередь traffic_queue: {session_new.get('Acct_Unique_Session_Id')}"
+                f"Трафик ({action}) отправлен в очередь: {session_new.Acct_Unique_Session_Id}"
             )
+
         return result
+
     except Exception as e:
         status = "error"
         logger.error(
-            f"Ошибка сохранения трафика для {session_new.get('Acct_Unique_Session_Id')}: {e}"
+            f"Ошибка сохранения трафика для {session_new.Acct_Unique_Session_Id}: {e}"
         )
         metrics.record_error("clickhouse_save_traffic_error", "ch_save_traffic")
         return False

@@ -1,55 +1,122 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, Literal
-from datetime import datetime
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from typing import Optional, Union, Dict, Any, Literal
+from utils import parse_event
+import logging
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
-class AccountingData(BaseModel):
-    User_Name: Optional[str] = Field(None, alias="User-Name")
-    Acct_Status_Type: str = Field(
-        ..., alias="Acct-Status-Type", description="Start, Interim-Update, Stop"
-    )
+class BaseAccountingData(BaseModel):
     Acct_Session_Id: str = Field(..., alias="Acct-Session-Id")
-    Event_Timestamp: str = Field(..., alias="Event-Timestamp")
-    Acct_Session_Time: Optional[int] = Field(None, alias="Acct-Session-Time")
-    Acct_Delay_Time: Optional[int] = Field(None, alias="Acct-Delay-Time")
-    Service_Type: Optional[str] = Field(None, alias="Service-Type")
-    Filter_Id: Optional[str] = Field(None, alias="Filter-Id")
-    ERX_Cos_Shaping_Rate: Optional[str] = Field(None, alias="ERX-Cos-Shaping-Rate")
+    Acct_Status_Type: str = Field("UNKNOWN", alias="Acct-Status-Type")
+    Event_Timestamp: datetime = Field(
+        datetime.now(tz=timezone.utc), alias="Event-Timestamp"
+    )
+    Acct_Unique_Session_Id: str = Field(..., alias="Acct-Unique-Session-Id")
+
+    User_Name: Optional[str] = Field(None, alias="User-Name")
+    Acct_Session_Time: int = Field(0, alias="Acct-Session-Time")
+    Acct_Delay_Time: Optional[int] = Field(0, alias="Acct-Delay-Time")
+    Acct_Input_Octets: int = Field(0, alias="Acct-Input-Octets")
+    Acct_Output_Octets: int = Field(0, alias="Acct-Output-Octets")
+    Acct_Input_Packets: int = Field(0, alias="Acct-Input-Packets")
+    Acct_Output_Packets: int = Field(0, alias="Acct-Output-Packets")
+    Acct_Input_Gigawords: int = Field(0, alias="Acct-Input-Gigawords")
+    Acct_Output_Gigawords: int = Field(0, alias="Acct-Output-Gigawords")
+    ERX_Input_Gigapkts: int = Field(0, alias="ERX-Input-Gigapkts")
+    ERX_Output_Gigapkts: int = Field(0, alias="ERX-Output-Gigapkts")
+    Framed_IP_Address: Optional[str] = Field(None, alias="Framed-IP-Address")
+    Framed_IP_Netmask: Optional[str] = Field(None, alias="Framed-IP-Netmask")
     Framed_IPv6_Prefix: Optional[str] = Field(None, alias="Framed-IPv6-Prefix")
     Delegated_IPv6_Prefix: Optional[str] = Field(None, alias="Delegated-IPv6-Prefix")
     Framed_IPv6_Pool: Optional[str] = Field(None, alias="Framed-IPv6-Pool")
-    Acct_Authentic: Optional[str] = Field(None, alias="Acct-Authentic")
+    ERX_IPv6_Acct_Input_Octets: int = Field(0, alias="ERX-IPv6-Acct-Input-Octets")
+    ERX_IPv6_Acct_Output_Octets: int = Field(0, alias="ERX-IPv6-Acct-Output-Octets")
+    ERX_IPv6_Acct_Input_Packets: int = Field(0, alias="ERX-IPv6-Acct-Input-Packets")
+    ERX_IPv6_Acct_Output_Packets: int = Field(0, alias="ERX-IPv6-Acct-Output-Packets")
+    ERX_IPv6_Acct_Input_Gigawords: int = Field(0, alias="ERX-IPv6-Acct-Input-Gigawords")
+    ERX_IPv6_Acct_Output_Gigawords: int = Field(
+        0, alias="ERX-IPv6-Acct-Output-Gigawords"
+    )
     Calling_Station_Id: Optional[str] = Field(None, alias="Calling-Station-Id")
     ERX_Dhcp_Options: Optional[str] = Field(None, alias="ERX-Dhcp-Options")
     ERX_Dhcp_Mac_Addr: Optional[str] = Field(None, alias="ERX-Dhcp-Mac-Addr")
-    Framed_IP_Address: Optional[str] = Field(None, alias="Framed-IP-Address")
-    Framed_IP_Netmask: Optional[str] = Field(None, alias="Framed-IP-Netmask")
     ERX_Service_Session: Optional[str] = Field(None, alias="ERX-Service-Session")
-    NAS_Identifier: Optional[str] = Field(None, alias="NAS-Identifier")
-    NAS_Port: Optional[str] = Field(None, alias="NAS-Port")
-    NAS_Port_Id: Optional[str] = Field(None, alias="NAS-Port-Id")
-    NAS_Port_Type: Optional[str] = Field(None, alias="NAS-Port-Type")
-    ERX_Virtual_Router_Name: Optional[str] = Field(
-        None, alias="ERX-Virtual-Router-Name"
-    )
     ERX_Pppoe_Description: Optional[str] = Field(None, alias="ERX-Pppoe-Description")
-    ADSL_Agent_Circuit_Id: Optional[str] = Field(None, alias="ADSL-Agent-Circuit-Id")
-    ADSL_Agent_Remote_Id: Optional[str] = Field(None, alias="ADSL-Agent-Remote-Id")
     ERX_DHCP_First_Relay_IPv4_Address: Optional[str] = Field(
         None, alias="ERX-DHCP-First-Relay-IPv4-Address"
     )
+    NAS_Identifier: Optional[str] = Field(None, alias="NAS-Identifier")
     NAS_IP_Address: Optional[str] = Field(None, alias="NAS-IP-Address")
-    Acct_Unique_Session_Id: str = Field(..., alias="Acct-Unique-Session-Id")
-    Acct_Input_Octets: Optional[int] = Field(None, alias="Acct-Input-Octets")
-    Acct_Output_Octets: Optional[int] = Field(None, alias="Acct-Output-Octets")
-    Acct_Input_Gigawords: Optional[int] = Field(None, alias="Acct-Input-Gigawords")
-    Acct_Output_Gigawords: Optional[int] = Field(None, alias="Acct-Output-Gigawords")
-    Acct_Input_Packets: Optional[int] = Field(None, alias="Acct-Input-Packets")
-    Acct_Output_Packets: Optional[int] = Field(None, alias="Acct-Output-Packets")
+    NAS_Port: Optional[str] = Field(None, alias="NAS-Port")
+    NAS_Port_Id: Optional[str] = Field(None, alias="NAS-Port-Id")
+    NAS_Port_Type: Optional[str] = Field(None, alias="NAS-Port-Type")
+    Service_Type: Optional[str] = Field(None, alias="Service-Type")
+    Filter_Id: Optional[str] = Field(None, alias="Filter-Id")
+    ERX_Cos_Shaping_Rate: Optional[str] = Field(None, alias="ERX-Cos-Shaping-Rate")
+    Acct_Authentic: Optional[str] = Field(None, alias="Acct-Authentic")
+    ERX_Virtual_Router_Name: Optional[str] = Field(
+        None, alias="ERX-Virtual-Router-Name"
+    )
+    ADSL_Agent_Circuit_Id: Optional[str] = Field(None, alias="ADSL-Agent-Circuit-Id")
+    ADSL_Agent_Remote_Id: Optional[str] = Field(None, alias="ADSL-Agent-Remote-Id")
+    ERX_Acct_Request_Reason: Optional[str] = Field(
+        None, alias="ERX-Acct-Request-Reason"
+    )
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
+    @field_validator("Event_Timestamp", mode="before")
+    def parse_timestamp(cls, ts: str) -> str:
+        """Parses a time string into a UNIX timestamp."""
+        return parse_event(ts)
+
+    @field_validator(
+        "Acct_Session_Time",
+        "Acct_Delay_Time",
+        "Acct_Input_Gigawords",
+        "Acct_Output_Gigawords",
+        "ERX_Input_Gigapkts",
+        "ERX_Output_Gigapkts",
+        "ERX_IPv6_Acct_Input_Packets",
+        "ERX_IPv6_Acct_Output_Packets",
+        "ERX_IPv6_Acct_Input_Gigawords",
+        "ERX_IPv6_Acct_Output_Gigawords",
+        mode="before",
+    )
+    def convert_to_int(
+        cls, value: Union[int, str, None], info: ValidationInfo
+    ) -> Optional[int]:
+        """Converts a value to int, returning None if the value is None."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid value for {info.field_name}: {value}, error: {e}")
+            return 0
+
     class Config:
-        extra = "allow"
+        allow_population_by_field_name = True
+
+
+class AccountingData(BaseAccountingData):
+    pass
+
+
+class SessionData(BaseAccountingData):
+    login: str = ""
+    auth_type: str = "UNKNOWN"
+    onu_mac: str = ""
+    contract: str = ""
+    service: str = ""
+
+    GMT: Optional[int] = 5
+    Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
+    Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
+    Acct_Update_Time: Optional[datetime] = Field(None, alias="Acct-Update-Time")
+
+    class Config:
         allow_population_by_field_name = True
 
 
@@ -61,50 +128,92 @@ class AccountingResponse(BaseModel):
     session_id: Optional[str] = None
 
 
-class LoginData(BaseModel):
-    login: str
-    contract: Optional[str] = None
-    auth_type: Optional[str] = None
-    mac: Optional[str] = None
-    vlan: Optional[str] = None
-    onu_mac: Optional[str] = None
-    ip_addr: Optional[str] = None
-    servicecats: Optional[Dict[str, Any]] = None
+class ServiceCategory(BaseModel):
+    """Категория сервиса."""
+
+    timeto: Optional[int] = None
+    speed: Optional[int] = None
 
 
-class SessionData(BaseModel):
-    session_id: str
-    login: Optional[str] = None
-    auth_type: str = "UNKNOWN"
-    contract: Optional[str] = None
-    onu_mac: Optional[str] = None
-    service: Optional[str] = None
-    start_time: Optional[datetime] = None
-    session_time: int = 0
-    input_octets: int = 0
-    output_octets: int = 0
-    input_gigawords: int = 0
-    output_gigawords: int = 0
-    nas_identifier: Optional[str] = None
-    nas_port_id: Optional[str] = None
-    framed_ip: Optional[str] = None
-    calling_station_id: Optional[str] = None
-    terminate_cause: Optional[str] = None
-    is_active: bool = True
+class ServiceCats(BaseModel):
+    """Категории сервисов."""
+
+    internet: Optional[ServiceCategory] = None
+
+
+class LoginBase(BaseModel):
+    """Базовая модель для данных логина."""
+
+    login: str = Field(default="", description="Логин пользователя")
+    auth_type: str = Field(default="UNAUTH", description="Тип аутентификации")
+    contract: str = Field(default="", description="Контракт пользователя")
+    onu_mac: str = Field(default="", description="MAC-адрес ONU")
+    vlan: Optional[str] = Field(default=None, description="VLAN")
+    ip_addr: Optional[str] = Field(
+        default=None, description="IP-адрес из данных логина"
+    )
+    servicecats: Optional[ServiceCats] = None
 
     class Config:
         extra = "allow"
+        allow_population_by_field_name = True
+
+
+class LoginSearchResult(LoginBase):
+    """Модель для результата поиска логина."""
+
+    pass
+
+
+class EnrichedSessionData(AccountingData, LoginBase):
+    """Модель для сессии с данными логина."""
+
+    service: Optional[str] = Field(default=None)
+
+    class Config:
+        extra = "allow"
+        allow_population_by_field_name = True
 
 
 class TrafficData(BaseModel):
-    session_id: str
-    login: Optional[str] = None
-    timestamp: datetime
-    input_octets: int = 0
-    output_octets: int = 0
-    input_gigawords: int = 0
-    output_gigawords: int = 0
-    session_time: int = 0
+    """Модель для данных трафика."""
+
+    Acct_Unique_Session_Id: str = Field(..., alias="Acct-Unique-Session-Id")
+    login: str
+    timestamp: str
+
+    # IPv4 трафик
+    Acct_Input_Octets: int = Field(0, alias="Acct-Input-Octets")
+    Acct_Output_Octets: int = Field(0, alias="Acct-Output-Octets")
+    Acct_Input_Packets: int = Field(0, alias="Acct-Input-Packets")
+    Acct_Output_Packets: int = Field(0, alias="Acct-Output-Packets")
+
+    # IPv6 трафик
+    ERX_IPv6_Acct_Input_Octets: int = Field(0, alias="ERX-IPv6-Acct-Input-Octets")
+    ERX_IPv6_Acct_Output_Octets: int = Field(0, alias="ERX-IPv6-Acct-Output-Octets")
+    ERX_IPv6_Acct_Input_Packets: int = Field(0, alias="ERX-IPv6-Acct-Input-Packets")
+    ERX_IPv6_Acct_Output_Packets: int = Field(0, alias="ERX-IPv6-Acct-Output-Packets")
+
+    @field_validator(
+        "Acct_Input_Octets",
+        "Acct_Output_Octets",
+        "Acct_Input_Packets",
+        "Acct_Output_Packets",
+        "ERX_IPv6_Acct_Input_Octets",
+        "ERX_IPv6_Acct_Output_Octets",
+        "ERX_IPv6_Acct_Input_Packets",
+        "ERX_IPv6_Acct_Output_Packets",
+        mode="before",
+    )
+    def ensure_non_negative(cls, value):
+        """Гарантирует, что значения трафика не отрицательные."""
+        if value is None:
+            return 0
+        return max(0, int(value))
 
     class Config:
         extra = "allow"
+        allow_population_by_field_name = True
+
+
+RABBIT_MODELS = TrafficData | SessionData
