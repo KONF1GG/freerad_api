@@ -144,11 +144,11 @@ class ServiceCats(BaseModel):
 class LoginBase(BaseModel):
     """Базовая модель для данных логина."""
 
-    login: str = Field(default="", description="Логин пользователя")
-    auth_type: str = Field(default="UNAUTH", description="Тип аутентификации")
-    contract: str = Field(default="", description="Контракт пользователя")
-    onu_mac: str = Field(default="", description="MAC-адрес ONU")
-    vlan: Optional[str] = Field(default=None, description="VLAN")
+    login: Optional[str] = Field(default="", description="Логин пользователя")
+    auth_type: Optional[str] = Field(default="UNAUTH", description="Тип аутентификации")
+    contract: Optional[str] = Field(default="", description="Контракт пользователя")
+    onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
+    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
         default=None, description="IP-адрес из данных логина"
     )
