@@ -314,10 +314,10 @@ async def auth(data: Dict) -> Dict:
 
         if data.get("Framed-Protocol") == "PPP":
             return {
-                "control:Cleartext-Password": {"value": ["hello"]},
+                "control:Cleartext-Password": {"value": ["80369615"]},
 #                "control:Auth-Type": {"value": ["Accept"]},
-                "control:Auth-Type": {"value": ["Reject"]},
                 "reply:Reply-Message": {"value": ["Hello bob"]},
+                "reply:Framed-Pool": {"value": "pool-testing"}
             }
         else:
             return {
