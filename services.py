@@ -303,7 +303,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
-async def auth(data: Dict) -> Dict:
+async def auth(data: AccountingData) -> Dict:
     """Авторизация пользователя"""
     start_time = time.time()
     status = "success"
