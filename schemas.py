@@ -92,6 +92,9 @@ class BaseAccountingData(BaseModel):
             return None
         if isinstance(value, dict):
             value = value.get("value", [0])[0]
+        if isinstance(value, str):
+            if value == "":
+                value = 0
         try:
             return int(value)  # type: ignore[return-value]
         except (ValueError, TypeError) as e:
