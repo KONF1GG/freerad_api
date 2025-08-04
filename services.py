@@ -312,6 +312,19 @@ async def auth(data: Dict) -> Dict:
         logger.info(f"Попытка авторизации: {data}")
         # Пример: получаем пароль из запроса
 
+        login = await find_login_by_session(data)
+        logger.debug(f"Логин: {login}")
+
+        # Договор найден, авторизуем
+        if login:
+            # PPPoE
+            if data.get("Framed-Protocol") == "PPP":
+                return {"reply:Reply-Message": {"value": "Session type is PPPoE"}}
+            return {}
+        # Договор не найден, сессия не авторизована
+        else:
+            return {}
+
         if data.get("Framed-Protocol") == "PPP":
             return {
                 "control:Cleartext-Password": {"value": ["80369615"]},
