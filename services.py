@@ -345,7 +345,7 @@ async def auth(data: AuthRequest) -> Dict:
 
             # Выставляем услугу
             if(not service_should_be_blocked):
-                ret.update({"reply:ERX-Service-Activate:1": "INET-FREEDOM(" + str(speed * 1100) + "k)"})
+                ret.update({"reply:ERX-Service-Activate:1": "INET-FREEDOM(" + str(int(speed) * 1100) + "k)"})
             else:
                 ret.update({"reply:ERX-Service-Activate:1": "NOINET-NOMONEY()"})
             
