@@ -312,9 +312,7 @@ async def auth(data: AuthRequest) -> Dict:
         logger.info(f"Попытка авторизации: {data}")
         # Пример: получаем пароль из запроса
 
-        if getattr(data, "Framed_Protocol", None) == "PPP" or (
-            hasattr(data, "get") and data.get("Framed-Protocol") == "PPP"
-        ):
+        if data.get("Framed-Protocol") == "PPP":
             return {
                 "control:Cleartext-Password": {"value": ["hello"]},
                 "control:Auth-Type": {"value": ["Accept"]},
