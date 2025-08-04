@@ -303,18 +303,26 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
-async def auth(data: AuthRequest) -> AuthResponse:
+async def auth(data: AuthRequest) -> Dict:
     """Авторизация пользователя"""
     start_time = time.time()
     status = "success"
 
     try:
-        # TODO: Реализовать бизнес-логику авторизации
         logger.info(f"Попытка авторизации: {data}")
-        return AuthResponse(
-            success=True,
-            message="Authentication successful",
-        )
+        # Пример: получаем пароль из запроса
+
+        if getattr(data, "Framed_Protocol", None) == "PPP" or (
+            hasattr(data, "get") and data.get("Framed-Protocol") == "PPP"
+        ):
+            return {
+                "control:Cleartext-Password": 80369615,
+                "control:Auth-Type": "Accept",
+                "reply:Reply-Message": "Hello bob",
+                "request:User-Password": 80369615,
+            }
+        else:
+            return {"status": "reject", "reason": "Unsupported protocol"}
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("auth", exec_time, status)

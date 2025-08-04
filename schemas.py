@@ -245,6 +245,8 @@ class TrafficData(BaseModel):
 class AuthRequest(BaseModel):
     """Модель запроса авторизации."""
 
+    
+
     class Config:
         extra = "allow"
         allow_population_by_field_name = True
