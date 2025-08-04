@@ -44,7 +44,7 @@ async def enrich_session_with_login(
         )
 
 
-async def process_traffic_data(session_req: SessionData) -> SessionData:
+async def process_traffic_data(session_req: EnrichedSessionData) -> EnrichedSessionData:
     """Преобразование данных трафика для сессии."""
     if session_req.Acct_Status_Type == "Start":
         return session_req

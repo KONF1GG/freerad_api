@@ -190,11 +190,6 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                             session_id=session_unique_id,
                         )
 
-        session_new = SessionData(**session_req.model_dump(by_alias=True))
-
-        # Соединяем счетчики
-        session_new = await process_traffic_data(session_new)
-
         # Проверка смены логина
         if (
             session_stored
@@ -208,12 +203,27 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             )
             await send_coa_session_kill(session_stored.model_dump(by_alias=True))
 
+        # Соединяем счетчики
+        session_req = await process_traffic_data(session_req)
+
+        if session_stored:
+            logger.info("Обогащение существующей сессии новыми данными")
+            session_stored_dict = session_stored.model_dump(by_alias=True)
+            session_req_dict = session_req.model_dump(by_alias=True)
+            session_stored_dict.update(session_req_dict)
+            session_new = SessionData(**session_stored_dict)
+        else:
+            logger.info("Создание новой сессии из входящих данных")
+            session_new = SessionData(**session_req.model_dump(by_alias=True))
+
         # Обработка по типу пакета
         # Если пакет типа Start, создаем новую сессию
         if packet_type == "Start":
             logger.info("Обработка пакета START")
             session_new.Acct_Start_Time = event_time
+            session_new.Acct_Update_Time = event_time
             session_new.Acct_Session_Time = 0
+            session_new.Acct_Stop_Time = None
 
             await asyncio.gather(
                 save_session_to_redis(session_new, redis_key),
@@ -227,10 +237,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             tasks = []
             if session_stored:
                 logger.info("Обработка Interim-Update для существующей сессии")
-                session_stored_dict = session_stored.model_dump(by_alias=True)
-                session_stored_dict.update(session_new.model_dump(by_alias=True))
-                session_new = SessionData(**session_stored_dict)
-
+                session_new.Acct_Update_Time = event_time
                 tasks.append(ch_save_traffic(session_new, session_stored))
             # Если сессия не существует, создаем новую
             else:
@@ -238,7 +245,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                 session_new.Acct_Start_Time = datetime.fromtimestamp(
                     event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
                 )
-                session_new.Acct_Update_Time = session_new.Acct_Start_Time
+                session_new.Acct_Update_Time = event_time
                 tasks.append(ch_save_traffic(session_new, None))
 
             if not is_service_session:
@@ -249,6 +256,9 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         # Если пакет типа Stop, завершаем сессию
         elif packet_type == "Stop":
             logger.info("Обработка пакета STOP")
+            session_new.Acct_Stop_Time = event_time
+            session_new.Acct_Update_Time = event_time
+
             if not session_stored:
                 session_new.Acct_Start_Time = datetime.fromtimestamp(
                     event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
@@ -257,7 +267,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                 session_new.Acct_Start_Time = session_stored.Acct_Start_Time
 
             await asyncio.gather(
-                ch_save_session(session_new),
+                ch_save_session(session_new, stoptime=True),
                 ch_save_traffic(
                     session_new,
                     session_stored if session_stored else None,
@@ -302,20 +312,67 @@ async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> 
     )
 
     try:
+        # Убеждаемся что все времена в UTC формате
         if session_data.Event_Timestamp:
-            event_time = session_data.Event_Timestamp
+            # Приводим к UTC если нужно
+            if session_data.Event_Timestamp.tzinfo is None:
+                session_data.Event_Timestamp = session_data.Event_Timestamp.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Event_Timestamp = session_data.Event_Timestamp.astimezone(
+                    timezone.utc
+                )
+
+        # Устанавливаем Acct_Update_Time если он еще не установлен
+        if not session_data.Acct_Update_Time:
+            session_data.Acct_Update_Time = (
+                session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
+            )
+
+        # Приводим Acct_Update_Time к UTC
+        if session_data.Acct_Update_Time.tzinfo is None:
+            session_data.Acct_Update_Time = session_data.Acct_Update_Time.replace(
+                tzinfo=timezone.utc
+            )
         else:
-            event_time = datetime.now(tz=timezone.utc)
-        session_data.Acct_Update_Time = event_time
-        if not stoptime:
-            # Активная сессия, не заполняем Stop-Time
-            logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
-            session_data.Acct_Stop_Time = None
-        else:
-            session_data.Acct_Stop_Time = event_time
+            session_data.Acct_Update_Time = session_data.Acct_Update_Time.astimezone(
+                timezone.utc
+            )
+
+        # Приводим Acct_Start_Time к UTC если он есть
+        if session_data.Acct_Start_Time:
+            if session_data.Acct_Start_Time.tzinfo is None:
+                session_data.Acct_Start_Time = session_data.Acct_Start_Time.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Acct_Start_Time = session_data.Acct_Start_Time.astimezone(
+                    timezone.utc
+                )
+
+        # Обрабатываем Acct_Stop_Time
+        if stoptime:
+            if not session_data.Acct_Stop_Time:
+                session_data.Acct_Stop_Time = (
+                    session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
+                )
+            # Приводим к UTC
+            if session_data.Acct_Stop_Time.tzinfo is None:
+                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.astimezone(
+                    timezone.utc
+                )
             logger.debug(
                 f"Сессия будет остановлена: {session_data.Acct_Unique_Session_Id}"
             )
+        else:
+            # Активная сессия, не заполняем Stop-Time
+            logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
+            session_data.Acct_Stop_Time = None
 
         result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
         if result:
