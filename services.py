@@ -308,8 +308,6 @@ async def auth(data: Dict) -> Dict:
     start_time = time.time()
     status = "success"
 
-    #ttt
-
     try:
         logger.info(f"Попытка авторизации: {data}")
         # Пример: получаем пароль из запроса
@@ -317,7 +315,8 @@ async def auth(data: Dict) -> Dict:
         if data.get("Framed-Protocol") == "PPP":
             return {
                 "control:Cleartext-Password": {"value": ["hello"]},
-                "control:Auth-Type": {"value": ["Accept"]},
+#                "control:Auth-Type": {"value": ["Accept"]},
+                "control:Auth-Type": {"value": ["Reject"]},
                 "reply:Reply-Message": {"value": ["Hello bob"]},
             }
         else:
