@@ -5,6 +5,9 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from config import REDIS_URL, REDIS_POOL_SIZE
 
+from redis.retry import Retry
+from redis.backoff import ExponentialBackoff
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,13 +30,11 @@ class RedisClient:
                             max_connections=REDIS_POOL_SIZE,
                             decode_responses=True,
                             retry_on_timeout=True,
-                            retry_on_error=[ConnectionError, TimeoutError],
-                            retry={
-                                "retries": 3,
-                                "backoff_base_delay": 0.1,
-                                "backoff_multiplier": 2,
-                                "backoff_cap": 1.0,
-                            },
+                            retry=Retry(
+                                retries=3,
+                                backoff=ExponentialBackoff(base=0.1, cap=1.0),
+                                supported_errors=(ConnectionError, TimeoutError),
+                            ),
                             socket_keepalive=True,
                             socket_keepalive_options={},
                             health_check_interval=30,
