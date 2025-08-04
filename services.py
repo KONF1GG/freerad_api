@@ -303,7 +303,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
-async def auth(data: AccountingData) -> Dict:
+async def auth(data: AuthRequest) -> Dict:
     """Авторизация пользователя"""
     start_time = time.time()
     status = "success"
@@ -318,7 +318,7 @@ async def auth(data: AccountingData) -> Dict:
         # Договор найден, авторизуем
         if login:
             # PPPoE
-            if data.get("Framed-Protocol") == "PPP":
+            if data.Framed_Protocol == "PPP":
                 return {"reply:Reply-Message": {"value": "Session type is PPPoE"}}
             return {}
         # Договор не найден, сессия не авторизована
@@ -328,9 +328,9 @@ async def auth(data: AccountingData) -> Dict:
         if data.get("Framed-Protocol") == "PPP":
             return {
                 "control:Cleartext-Password": {"value": ["80369615"]},
-#                "control:Auth-Type": {"value": ["Accept"]},
+                #                "control:Auth-Type": {"value": ["Accept"]},
                 "reply:Reply-Message": {"value": ["Hello bob"]},
-                "reply:Framed-Pool": {"value": "pool-testing"}
+                "reply:Framed-Pool": {"value": "pool-testing"},
             }
         else:
             return {
