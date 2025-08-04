@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import ValidationError
 from redis_client import get_redis, execute_redis_command
 from config import RADIUS_LOGIN_PREFIX
-from schemas import AccountingData, EnrichedSessionData, LoginSearchResult, SessionData
+from schemas import AccountingData, AuthRequest, EnrichedSessionData, LoginSearchResult, SessionData
 from utils import is_mac_username, mac_from_hex, mac_from_username, nasportid_parse
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ async def search_redis(
         return None
 
 
-async def find_login_by_session(session: AccountingData) -> Optional[LoginSearchResult]:
+async def find_login_by_session(session: AccountingData | AuthRequest) -> Optional[LoginSearchResult]:
     """
     Асинхронный поиск логина по данным сессии.
 
@@ -240,3 +240,6 @@ async def find_login_by_session(session: AccountingData) -> Optional[LoginSearch
     finally:
         exec_time = time.time() - start_time
         logger.debug(f"Login search took {exec_time:.3f}s")
+
+def find_sessions_by_login(login: str):
+    return
