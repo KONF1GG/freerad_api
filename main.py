@@ -114,7 +114,7 @@ async def do_acct(data: AccountingData):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/auth/", response_model=AuthResponse)
+@app.post("/authorize/", response_model=AuthResponse)
 async def do_auth(data: AuthRequest):
     """Авторизация пользователя"""
     try:
