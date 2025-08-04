@@ -316,10 +316,9 @@ async def auth(data: AuthRequest) -> Dict:
             hasattr(data, "get") and data.get("Framed-Protocol") == "PPP"
         ):
             return {
-                "control:Cleartext-Password": 80369615,
-                "control:Auth-Type": "Accept",
-                "reply:Reply-Message": "Hello bob",
-                "request:User-Password": 80369615,
+                "control:Cleartext-Password": {"value": ["hello"]},
+                "control:Auth-Type": {"value": ["Accept"]},
+                "reply:Reply-Message": {"value": ["Hello bob"]},
             }
         else:
             return {"status": "reject", "reason": "Unsupported protocol"}
