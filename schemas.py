@@ -71,55 +71,56 @@ class BaseAccountingData(BaseModel):
         """Parses a time string into a UNIX timestamp."""
         return parse_event(ts)
 
-
-@field_validator(
-    "Acct_Session_Time",
-    "Acct_Delay_Time",
-    "Acct_Input_Gigawords",
-    "Acct_Output_Gigawords",
-    "ERX_Input_Gigapkts",
-    "ERX_Output_Gigapkts",
-    "ERX_IPv6_Acct_Input_Packets",
-    "ERX_IPv6_Acct_Output_Packets",
-    "ERX_IPv6_Acct_Input_Gigawords",
-    "ERX_IPv6_Acct_Output_Gigawords",
-    "Acct_Input_Octets",
-    "Acct_Output_Octets",
-    "Acct_Input_Packets",
-    "Acct_Output_Packets",
-    "ERX_IPv6_Acct_Input_Octets",
-    "ERX_IPv6_Acct_Output_Octets",
-    mode="before",
-)
-def safe_int(cls, value: Any, info: ValidationInfo) -> int:
-    """Безопасное преобразование в int из любого типа."""
-    # Если None или пустая строка — 0
-    if value is None or value == "":
-        return 0
-
-    # Если dict с ключом 'value' — берём первый элемент
-    if isinstance(value, dict):
-        value = value.get("value", [0])[0]
-
-    # Если строка — пробуем int()
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
+    @field_validator(
+        "Acct_Session_Time",
+        "Acct_Delay_Time",
+        "Acct_Input_Gigawords",
+        "Acct_Output_Gigawords",
+        "ERX_Input_Gigapkts",
+        "ERX_Output_Gigapkts",
+        "ERX_IPv6_Acct_Input_Packets",
+        "ERX_IPv6_Acct_Output_Packets",
+        "ERX_IPv6_Acct_Input_Gigawords",
+        "ERX_IPv6_Acct_Output_Gigawords",
+        "Acct_Input_Octets",
+        "Acct_Output_Octets",
+        "Acct_Input_Packets",
+        "Acct_Output_Packets",
+        "ERX_IPv6_Acct_Input_Octets",
+        "ERX_IPv6_Acct_Output_Octets",
+        mode="before",
+    )
+    def safe_int(cls, value: Any, info: ValidationInfo) -> int:
+        """Безопасное преобразование в int из любого типа."""
+        # Если None или пустая строка — 0
+        if value is None or value == "":
             return 0
+
+        # Если dict с ключом 'value' — берём первый элемент
+        if isinstance(value, dict):
+            value = value.get("value", [0])[0]
+
+        # Если строка — пробуем int()
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return 0
+            try:
+                return int(value)
+            except ValueError:
+                logger.warning(
+                    f"Invalid string for {info.field_name}: '{value}', using 0"
+                )
+                return 0
+
+        # Если число — сразу int()
         try:
             return int(value)
-        except ValueError:
-            logger.warning(f"Invalid string for {info.field_name}: '{value}', using 0")
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Unsupported type for {info.field_name}: {type(value)} ({value}), using 0"
+            )
             return 0
-
-    # Если число — сразу int()
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        logger.warning(
-            f"Unsupported type for {info.field_name}: {type(value)} ({value}), using 0"
-        )
-        return 0
 
     class Config:
         allow_population_by_field_name = True
