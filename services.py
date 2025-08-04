@@ -303,7 +303,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
-async def auth(data: AuthRequest) -> Dict:
+async def auth(data: Dict) -> Dict:
     """Авторизация пользователя"""
     start_time = time.time()
     status = "success"
@@ -319,7 +319,11 @@ async def auth(data: AuthRequest) -> Dict:
                 "reply:Reply-Message": {"value": ["Hello bob"]},
             }
         else:
-            return {"status": "reject", "reason": "Unsupported protocol"}
+            return {
+                "control:Cleartext-Password": {"value": ["bye"]},
+                "control:Auth-Type": {"value": ["Accept"]},
+                "reply:Reply-Message": {"value": ["Hello bob"]},
+            }
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("auth", exec_time, status)

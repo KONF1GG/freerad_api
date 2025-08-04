@@ -115,13 +115,14 @@ async def do_acct(data: AccountingData):
 
 
 @app.post("/authorize/", response_model=Dict)
-async def do_auth(data: AuthRequest):
+async def do_auth(data: Dict):
     """Авторизация пользователя"""
     try:
         return await auth(data)
     except Exception as e:
         logger.error(f"Error processing authentication request: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(
