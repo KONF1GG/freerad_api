@@ -51,8 +51,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Async Radius Accounting Microservice",
-    description="High-performance asynchronous RADIUS accounting service",
+    title="Async Radius Microservice",
+    description="asynchronous RADIUS service",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -88,11 +88,28 @@ async def health_check():
 
     status = "healthy" if redis_ok and rabbitmq_ok else "unhealthy"
 
+    # Добавляем информацию о Redis семафоре
+    from redis_client import _redis_client
+
+    waiting_tasks = (
+        len(_redis_client._semaphore._waiters)
+        if _redis_client._semaphore._waiters
+        else 0
+    )
+    semaphore_value = _redis_client._semaphore._value
+
     return {
         "status": status,
         "services": {
             "redis": "ok" if redis_ok else "error",
             "rabbitmq": "ok" if rabbitmq_ok else "error",
+        },
+        "redis_pool": {
+            "available_permits": semaphore_value,
+            "waiting_tasks": waiting_tasks,
+            "max_connections": _redis_client._pool.max_connections
+            if _redis_client._pool
+            else 0,
         },
     }
 

@@ -1,0 +1,74 @@
+2025-08-04 17:49:39,313 - main - INFO - Starting Radius Core service...
+2025-08-04 17:49:39,336 - redis_client - INFO - Redis connection established successfully
+2025-08-04 17:49:39,340 - main - INFO - Redis connection established
+2025-08-04 17:49:39,395 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 17:49:39,395 - main - INFO - RabbitMQ connection established
+2025-08-04 18:03:06,332 - services - INFO - Обработка аккаунтинга: Start для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:04:02,263 - services - INFO - Создание новой сессии из входящих данных
+2025-08-04 18:04:31,213 - services - INFO - Обработка пакета START
+2025-08-04 18:05:09,350 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:05:09,797 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:06:11,412 - services - INFO - Успешный аккаунтинг: Start
+2025-08-04 18:06:32,359 - main - INFO - Starting Radius Core service...
+2025-08-04 18:06:32,385 - redis_client - INFO - Redis connection established successfully
+2025-08-04 18:06:32,389 - main - INFO - Redis connection established
+2025-08-04 18:06:32,554 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 18:06:32,554 - main - INFO - RabbitMQ connection established
+2025-08-04 18:06:53,162 - services - INFO - Обработка аккаунтинга: Interim-Update для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:07:38,097 - services - INFO - Обогащение существующей сессии новыми данными
+2025-08-04 18:11:49,575 - services - INFO - Обработка Interim-Update для существующей сессии
+2025-08-04 18:12:20,642 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:12:20,645 - rabbitmq_client - ERROR - Failed to send message to traffic_queue_test: Server connection reset: ConnectionResetError(54, 'Connection reset by peer')
+2025-08-04 18:12:20,646 - aio_pika.robust_connection - INFO - Connection to amqp://leo:******@192.168.110.52:5672/ closed. Reconnecting after 5 seconds.
+2025-08-04 18:13:12,119 - main - INFO - Starting Radius Core service...
+2025-08-04 18:13:12,142 - redis_client - INFO - Redis connection established successfully
+2025-08-04 18:13:12,145 - main - INFO - Redis connection established
+2025-08-04 18:13:12,190 - rabbitmq_client - ERROR - Failed to connect to RabbitMQ: PRECONDITION_FAILED - inequivalent arg 'x-message-ttl' for queue 'session_queue' in vhost '/': received the value '3600000' of type 'signedint' but current is none
+2025-08-04 18:13:12,190 - rabbitmq_client - ERROR - RabbitMQ health check failed: PRECONDITION_FAILED - inequivalent arg 'x-message-ttl' for queue 'session_queue' in vhost '/': received the value '3600000' of type 'signedint' but current is none
+2025-08-04 18:13:12,190 - main - ERROR - RabbitMQ health check failed
+2025-08-04 18:13:27,075 - services - INFO - Обработка аккаунтинга: Stop для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:14:27,861 - services - INFO - Обогащение существующей сессии новыми данными
+2025-08-04 18:14:27,864 - services - INFO - Обработка пакета STOP
+2025-08-04 18:14:27,865 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:14:27,969 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:14:27,978 - services - INFO - Трафик (дельта) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:14:27,978 - services - INFO - Успешный аккаунтинг: Stop
+2025-08-04 18:14:33,974 - services - INFO - Обработка аккаунтинга: Stop для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:16:46,756 - services - INFO - Создание новой сессии из входящих данных
+2025-08-04 18:16:50,540 - services - INFO - Обработка пакета STOP
+2025-08-04 18:17:41,540 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:17:41,544 - rabbitmq_client - ERROR - Failed to send message to session_queue: Server connection reset: ConnectionResetError(54, 'Connection reset by peer')
+2025-08-04 18:17:41,545 - aio_pika.robust_connection - INFO - Connection to amqp://leo:******@192.168.110.52:5672/ closed. Reconnecting after 5 seconds.
+2025-08-04 18:27:00,460 - main - INFO - Starting Radius Core service...
+2025-08-04 18:27:00,484 - redis_client - INFO - Redis connection established successfully
+2025-08-04 18:27:00,488 - main - INFO - Redis connection established
+2025-08-04 18:27:00,542 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 18:27:00,542 - main - INFO - RabbitMQ connection established
+2025-08-04 18:27:13,945 - services - INFO - Обработка аккаунтинга: Stop для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:27:18,931 - services - INFO - Создание новой сессии из входящих данных
+2025-08-04 18:27:18,932 - services - INFO - Обработка пакета STOP
+2025-08-04 18:27:18,934 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:27:18,953 - services - INFO - Трафик (полный) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:27:18,957 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:27:18,957 - services - INFO - Успешный аккаунтинг: Stop
+2025-08-04 18:32:36,020 - main - INFO - Starting Radius Core service...
+2025-08-04 18:32:36,044 - redis_client - INFO - Redis connection established successfully
+2025-08-04 18:32:36,049 - main - INFO - Redis connection established
+2025-08-04 18:32:36,090 - rabbitmq_client - ERROR - Failed to connect to RabbitMQ: PRECONDITION_FAILED - inequivalent arg 'x-message-ttl' for queue 'session_queue' in vhost '/': received the value '3600000' of type 'signedint' but current is none
+2025-08-04 18:32:36,090 - rabbitmq_client - ERROR - RabbitMQ health check failed: PRECONDITION_FAILED - inequivalent arg 'x-message-ttl' for queue 'session_queue' in vhost '/': received the value '3600000' of type 'signedint' but current is none
+2025-08-04 18:32:36,090 - main - ERROR - RabbitMQ health check failed
+2025-08-04 18:32:42,941 - services - INFO - Обработка аккаунтинга: Start для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:32:42,956 - services - INFO - Создание новой сессии из входящих данных
+2025-08-04 18:32:42,956 - services - INFO - Обработка пакета START
+2025-08-04 18:32:48,280 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:32:48,300 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:32:48,301 - services - INFO - Успешный аккаунтинг: Start
+2025-08-04 18:33:09,813 - services - INFO - Обработка аккаунтинга: Interim-Update для сессии ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:33:09,832 - services - INFO - Обогащение существующей сессии новыми данными
+2025-08-04 18:33:09,832 - services - INFO - Обработка Interim-Update для существующей сессии
+2025-08-04 18:33:09,834 - services - INFO - Сохранение сессии в ClickHouse: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:33:09,841 - services - INFO - Трафик (дельта) отправлен в очередь: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:33:09,842 - services - INFO - Сессия отправлена в очередь session_queue: ab217a26136ef73e401058a5c6d54b90
+2025-08-04 18:33:09,843 - services - INFO - Успешный аккаунтинг: Interim-Update
+2025-08-04 18:45:54,158 - aio_pika.robust_connection - INFO - Connection to amqp://leo:******@192.168.110.52:5672/ closed. Reconnecting after 5 seconds.
+2025-08-04 18:46:24,194 - main - INFO - Shutting down Radius Core service...

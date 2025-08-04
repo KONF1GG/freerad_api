@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 from pydantic import ValidationError
-from redis_client import get_redis
+from redis_client import get_redis, execute_redis_command
 from config import RADIUS_LOGIN_PREFIX
 from schemas import AccountingData, EnrichedSessionData, LoginSearchResult, SessionData
 from utils import is_mac_username, mac_from_hex, mac_from_username, nasportid_parse

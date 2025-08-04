@@ -310,7 +310,6 @@ async def auth(data: Dict) -> Dict:
 
     try:
         logger.info(f"Попытка авторизации: {data}")
-        # Пример: получаем пароль из запроса
 
         if data.get("Framed-Protocol") == "PPP":
             return {
