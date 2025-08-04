@@ -240,3 +240,6 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
     finally:
         exec_time = time.time() - start_time
         logger.debug(f"Login search took {exec_time:.3f}s")
+
+def find_sessions_by_login(login: str):
+    return

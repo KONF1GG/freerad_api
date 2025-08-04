@@ -13,11 +13,12 @@ from crud import (
     process_traffic_data,
     save_session_to_redis,
     delete_session_from_redis,
+    find_sessions_by_login
 )
 from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
 from redis_client import get_redis
 from rabbitmq_client import rmq_send_message
-from utils import now_str
+from utils import (now_str, nasportid_parse)
 
 from config import (
     RADIUS_SESSION_PREFIX,
@@ -313,31 +314,73 @@ async def auth(data: AuthRequest) -> Dict:
         # Пример: получаем пароль из запроса
 
         login = await find_login_by_session(data)
-        logger.debug(f"Логин: {login}")
+        logger.info(f"Логин: {login}")
+        ret = {}
+        nasportid = nasportid_parse(data.NAS_Port_Id)
+        sessions = find_sessions_by_login(login.login)
 
         # Договор найден, авторизуем
         if login:
+            timeto = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "timeto",
+                None,
+            )
+            speed = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "speed",
+                None,
+            )
+
+            # Проверяем текущее время для сравнения со сроком действия услуги
+            now_timestamp = datetime.now(tz=timezone.utc).timestamp()
+            service_should_be_blocked = False
+
+            if timeto is not None:
+                try:
+                    timeto_float = float(timeto)
+                    service_should_be_blocked = timeto_float < now_timestamp
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid timeto value: {timeto}, error: {e}")
+
+            # Выставляем услугу
+            if(not service_should_be_blocked):
+                ret.update({"reply:ERX-Service-Activate:1": "INET-FREEDOM(" + str(speed * 1100) + "k)"})
+            else:
+                ret.update({"reply:ERX-Service-Activate:1": "NOINET-NOMONEY()"})
+            
+            if(login.ip_addr):
+                ret.update({"reply:Framed-IP-Address": login.ip_addr})
+            else:
+                ret.update({"reply:Framed-Pool": "pool-" + nasportid['psiface']})
+            if(login.ipv6 and not sessions):
+                ret.update({"reply:Framed-IPv6-Prefix": login.ipv6, "reply:Delegated-IPv6-Prefix": login.ipv6_pd})
+
+            ret.update({"reply:ERX-Virtual-Router-Name": "bng"})
+
+            if(login.login == "znvpn7132"):
+                ret.update({"reply:Framed-Route": "80.244.41.248/29"})
+
+            if(login.auth_type == 'STATIC'):
+                ret.update({"reply:Idle-Timeout": "10"})
+
+            ret.update({"reply:NAS-Port-Id": data.User_Name + ' | ' + login.login + ' | ' + data.ADSL_Agent_Remote_Id})
+
+
             # PPPoE
             if data.Framed_Protocol == "PPP":
-                return {"reply:Reply-Message": {"value": "Session type is PPPoE"}}
-            return {}
+                ret.update({"control:Cleartext-Password": {"value": login.password}})
+            # IPOE во всех вариантах
+            else:
+                ret.update({"control:Cleartext-Password": {"value": "ipoe"}, "control:Auth-Type": {"value": "Accept"}})
+
+            ret.update({"reply:Reply-Message": {"value": "Session type is " + login.auth_type}})
+
+            return ret
         # Договор не найден, сессия не авторизована
         else:
-            return {}
+            return ret
 
-        if data.get("Framed-Protocol") == "PPP":
-            return {
-                "control:Cleartext-Password": {"value": ["80369615"]},
-                #                "control:Auth-Type": {"value": ["Accept"]},
-                "reply:Reply-Message": {"value": ["Hello bob"]},
-                "reply:Framed-Pool": {"value": "pool-testing"},
-            }
-        else:
-            return {
-                "control:Cleartext-Password": {"value": ["bye"]},
-                "control:Auth-Type": {"value": ["Accept"]},
-                "reply:Reply-Message": {"value": ["Hello bob"]},
-            }
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("auth", exec_time, status)

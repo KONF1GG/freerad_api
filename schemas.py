@@ -276,8 +276,16 @@ class AuthRequest(BaseModel):
         ..., alias="ERX-DHCP-First-Relay-IPv4-Address"
     )
 
-    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
+#    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
 
+    Event_Timestamp: datetime = Field(
+        datetime.now(tz=timezone.utc), alias="Event-Timestamp"
+    )
+
+    @field_validator("Event_Timestamp", mode="before")
+    def parse_timestamp(cls, ts: str | datetime | dict) -> str:
+        """Parses a time string into a UNIX timestamp."""
+        return parse_event(ts)
     class Config:
         extra = "allow"
         allow_population_by_field_name = True
