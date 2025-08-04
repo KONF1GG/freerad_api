@@ -85,13 +85,15 @@ class BaseAccountingData(BaseModel):
         mode="before",
     )
     def convert_to_int(
-        cls, value: Union[int, str, None], info: ValidationInfo
+        cls, value: Union[int, str, dict, None], info: ValidationInfo
     ) -> Optional[int]:
         """Converts a value to int, returning None if the value is None."""
         if value is None:
             return None
+        if isinstance(value, dict):
+            value = value.get("value", [0])[0]
         try:
-            return int(value)
+            return int(value)  # type: ignore[return-value]
         except (ValueError, TypeError) as e:
             logger.warning(f"Invalid value for {info.field_name}: {value}, error: {e}")
             return 0
