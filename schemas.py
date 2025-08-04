@@ -243,9 +243,40 @@ class TrafficData(BaseModel):
 
 
 class AuthRequest(BaseModel):
-    """Модель запроса авторизации."""
+    """Модель запроса авторизации RADIUS (Access-Request)"""
 
-    
+    Packet_Type: str = Field(..., alias="Packet-Type")
+    User_Name: str = Field(..., alias="User-Name")
+    Service_Type: str = Field(..., alias="Service-Type")
+
+    Acct_Session_Id: str = Field(..., alias="Acct-Session-Id")
+    Framed_Protocol: str = Field(..., alias="Framed-Protocol")
+
+    CHAP_Password: Optional[str] = Field(None, alias="CHAP-Password")
+    CHAP_Challenge: Optional[str] = Field(None, alias="CHAP-Challenge")
+
+    Calling_Station_Id: str = Field(..., alias="Calling-Station-Id")
+    ERX_Dhcp_Mac_Addr: str = Field(..., alias="ERX-Dhcp-Mac-Addr")
+    ERX_Dhcp_Options: str = Field(..., alias="ERX-Dhcp-Options")
+
+    NAS_Identifier: str = Field(..., alias="NAS-Identifier")
+    NAS_IP_Address: str = Field(..., alias="NAS-IP-Address")
+    NAS_Port: str = Field(..., alias="NAS-Port")
+    NAS_Port_Id: str = Field(..., alias="NAS-Port-Id")
+    NAS_Port_Type: str = Field(..., alias="NAS-Port-Type")
+
+    Framed_IP_Address: Optional[str] = Field(None, alias="Framed-IP-Address")
+    Framed_IP_Netmask: Optional[str] = Field(None, alias="Framed-IP-Netmask")
+
+    ERX_Virtual_Router_Name: str = Field(..., alias="ERX-Virtual-Router-Name")
+    ERX_Pppoe_Description: str = Field(..., alias="ERX-Pppoe-Description")
+    ADSL_Agent_Circuit_Id: str = Field(..., alias="ADSL-Agent-Circuit-Id")
+    ADSL_Agent_Remote_Id: str = Field(..., alias="ADSL-Agent-Remote-Id")
+    ERX_DHCP_First_Relay_IPv4_Address: str = Field(
+        ..., alias="ERX-DHCP-First-Relay-IPv4-Address"
+    )
+
+    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
 
     class Config:
         extra = "allow"

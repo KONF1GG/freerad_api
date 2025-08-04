@@ -247,3 +247,11 @@ Traceback (most recent call last):
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "uvloop/loop.pyx", line 2050, in create_connection
 ValueError: host and port was not specified and no sock specified
+2025-08-04 19:49:14,390 - main - INFO - Starting Radius Core service...
+2025-08-04 19:49:14,418 - redis_client - INFO - Redis connection established successfully
+2025-08-04 19:49:14,422 - main - INFO - Redis connection established
+2025-08-04 19:49:14,477 - rabbitmq_client - INFO - RabbitMQ connection established successfully
+2025-08-04 19:49:14,477 - main - INFO - RabbitMQ connection established
+2025-08-04 19:50:05,925 - services - INFO - Попытка авторизации: Packet_Type='string' User_Name='string' Service_Type='string' Acct_Session_Id='string' Framed_Protocol='string' CHAP_Password='string' CHAP_Challenge='string' Calling_Station_Id='string' ERX_Dhcp_Mac_Addr='string' ERX_Dhcp_Options='string' NAS_Identifier='string' NAS_IP_Address='string' NAS_Port='string' NAS_Port_Id='string' NAS_Port_Type='string' Framed_IP_Address='string' Framed_IP_Netmask='string' ERX_Virtual_Router_Name='string' ERX_Pppoe_Description='string' ADSL_Agent_Circuit_Id='string' ADSL_Agent_Remote_Id='string' ERX_DHCP_First_Relay_IPv4_Address='string' Event_Timestamp=datetime.datetime(2025, 8, 4, 14, 50, 4, 73000, tzinfo=TzInfo(UTC)) additionalProp1={}
+2025-08-04 19:50:05,926 - crud - WARNING - Could not extract VLAN from NAS-Port-Id: string
+2025-08-04 19:50:18,046 - main - INFO - Shutting down Radius Core service...
