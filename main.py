@@ -1,3 +1,4 @@
+from typing import Dict
 import uvicorn
 import uvloop
 import asyncio
@@ -7,8 +8,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from schemas import AccountingData, AccountingResponse
-from services import process_accounting
+from schemas import AccountingData, AccountingResponse, AuthRequest, AuthResponse
+from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary
@@ -112,6 +113,15 @@ async def do_acct(data: AccountingData):
         logger.error(f"Error processing accounting request: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/auth/", response_model=AuthResponse)
+async def do_auth(data: AuthRequest):
+    """Авторизация пользователя"""
+    try:
+        return await auth(data)
+    except Exception as e:
+        logger.error(f"Error processing authentication request: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(

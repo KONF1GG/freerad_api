@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-
+from schemas import AuthRequest, AuthResponse
 from pydantic import ValidationError
 from crud import (
     enrich_session_with_login,
@@ -301,6 +301,23 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("accounting", exec_time, status)
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
+
+
+async def auth(data: AuthRequest) -> AuthResponse:
+    """Авторизация пользователя"""
+    start_time = time.time()
+    status = "success"
+
+    try:
+        # TODO: Реализовать бизнес-логику авторизации
+        logger.info(f"Попытка авторизации: {data}")
+        return AuthResponse(
+            success=True,
+            message="Authentication successful",
+        )
+    finally:
+        exec_time = time.time() - start_time
+        metrics.record_operation_duration("auth", exec_time, status)
 
 
 async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> bool:
