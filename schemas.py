@@ -67,7 +67,7 @@ class BaseAccountingData(BaseModel):
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str) -> str:
+    def parse_timestamp(cls, ts: str | datetime | dict) -> str:
         """Parses a time string into a UNIX timestamp."""
         return parse_event(ts)
 

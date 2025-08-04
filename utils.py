@@ -10,11 +10,16 @@ logger = logging.getLogger(__name__)
 EVENT_FMT = "%b %d %Y %H:%M:%S +05"
 
 
-def parse_event(ts: str | datetime) -> str:
+def parse_event(ts: str | datetime | dict) -> str:
     """Парсит время в любом виде и возвращает строку в UTC: 'YYYY-MM-DD HH:MM:SS'"""
     dt = None
     try:
-        if isinstance(ts, datetime):
+        if isinstance(ts, dict):
+            ts = ts.get("value", [0])[0]
+            dt = parser.parse(ts)  # type: ignore[arg-type]
+            if ts is None:
+                dt = datetime.now(timezone.utc)
+        elif isinstance(ts, datetime):
             dt = ts
         elif isinstance(ts, (int, float)):
             dt = datetime.fromtimestamp(ts, tz=timezone.utc)
