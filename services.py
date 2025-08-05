@@ -316,10 +316,10 @@ async def auth(data: AuthRequest) -> Dict:
         logger.info(f"Логин: {login}")
         ret = {}
         nasportid = nasportid_parse(data.NAS_Port_Id)
-        sessions = find_sessions_by_login(login.login)
 
         # Договор найден, авторизуем
         if login:
+            sessions = find_sessions_by_login(login.login)
             timeto = getattr(
                 getattr(getattr(login, "servicecats", None), "internet", None),
                 "timeto",
@@ -333,7 +333,7 @@ async def auth(data: AuthRequest) -> Dict:
 
             # Проверяем текущее время для сравнения со сроком действия услуги
             now_timestamp = datetime.now(tz=timezone.utc).timestamp()
-            service_should_be_blocked = False
+            service_should_be_blocked = True
 
             if timeto is not None:
                 try:
@@ -375,10 +375,11 @@ async def auth(data: AuthRequest) -> Dict:
 
             ret.update({"reply:Reply-Message": {"value": "Session type is " + login.auth_type}})
 
-            return ret
         # Договор не найден, сессия не авторизована
         else:
-            return ret
+            ret.update({"reply:Reply-Message": {"value": "Session is unauth, login not found"}})
+
+        return ret
 
     finally:
         exec_time = time.time() - start_time
