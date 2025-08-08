@@ -5,6 +5,8 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+
+from fastapi import HTTPException
 from schemas import AuthRequest
 from pydantic import ValidationError
 from crud import (
@@ -290,14 +292,11 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         return AccountingResponse(
             action="noop", reason="processed successfully", session_id=session_unique_id
         )
-
     except Exception as e:
         status = "error"
         logger.error(f"Ошибка при обработке аккаунтинга: {e}", exc_info=True)
         metrics.record_error("accounting_exception", "accounting")
-        return AccountingResponse(
-            action="log", reason=f"Ошибка обработки: {str(e)}", status="error"
-        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("accounting", exec_time, status)
@@ -490,6 +489,12 @@ async def auth(data: AuthRequest) -> Dict:
             )
 
         return ret
+    except HTTPException as http_exc:
+        logger.error(f"HTTP error processing authorization request: {http_exc}", exc_info=True)
+        raise
+    except Exception as e:
+        logger.error(f"Error processing authorization request: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     finally:
         exec_time = time.time() - start_time

@@ -136,9 +136,12 @@ async def do_acct(data: AccountingData):
     """Обработка RADIUS Accounting запросов"""
     try:
         return await process_accounting(data)
+    except HTTPException as http_exc:
+        logger.error(f"HTTP error processing accounting request: {http_exc}", exc_info=True)
+        raise
     except Exception as e:
         logger.error(f"Error processing accounting request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/authorize/", response_model=Dict)

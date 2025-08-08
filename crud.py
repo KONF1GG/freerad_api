@@ -1,3 +1,4 @@
+import asyncio
 import time
 import re
 import json
@@ -273,7 +274,6 @@ async def find_sessions_by_login(login: str) -> int:
     index = "idx:radius:session"
 
     result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-
     session_count = 0
     if result:
         session_count = result[0]
