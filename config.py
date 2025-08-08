@@ -3,6 +3,11 @@ import os
 # Redis Configuration
 REDIS_URL: str = os.getenv("REDIS_URL", "")
 REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "10"))
+REDIS_CONCURRENCY: int = int(
+    os.getenv("REDIS_CONCURRENCY", str(max(1, int(REDIS_POOL_SIZE * 0.9))))
+)
+
+REDIS_COMMAND_TIMEOUT: float = float(os.getenv("REDIS_COMMAND_TIMEOUT", "5.0"))
 
 # RabbitMQ Configuration
 AMQP_URL: str = os.getenv("AMQP_URL", "")

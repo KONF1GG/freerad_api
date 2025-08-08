@@ -98,7 +98,7 @@ class RabbitMQClient:
                 else DeliveryMode.NOT_PERSISTENT,
                 content_type="application/json",
                 content_encoding="utf-8",
-                timestamp=asyncio.get_event_loop().time(),
+                timestamp=None,
             )
 
             # Отправляем сообщение

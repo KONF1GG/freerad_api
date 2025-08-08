@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from schemas import AuthRequest, AuthResponse
+from schemas import AuthRequest
 from pydantic import ValidationError
 from crud import (
     enrich_session_with_login,
@@ -13,12 +13,12 @@ from crud import (
     process_traffic_data,
     save_session_to_redis,
     delete_session_from_redis,
-    find_sessions_by_login
+    find_sessions_by_login,
 )
 from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
-from redis_client import get_redis
+from redis_client import get_redis, execute_redis_command
 from rabbitmq_client import rmq_send_message
-from utils import (now_str, nasportid_parse)
+from utils import now_str, nasportid_parse
 
 from config import (
     RADIUS_SESSION_PREFIX,
@@ -36,7 +36,7 @@ async def get_session_from_redis(redis_key: str) -> Optional[SessionData]:
     """
     redis = await get_redis()
     try:
-        session_data = await redis.execute_command("JSON.GET", redis_key)
+        session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
         if not session_data:
             logger.debug(f"No session data found for key: {redis_key}")
             return None
@@ -320,7 +320,7 @@ async def auth(data: AuthRequest) -> Dict:
 
         # Договор найден, авторизуем
         if login and login.auth_type != "VIDEO":
-            session_count = await find_sessions_by_login(login.login)
+            session_count = await find_sessions_by_login(login.login or "")
             logger.debug(f"Сессии найдены: {session_count}")
 
             timeto = getattr(
@@ -346,67 +346,148 @@ async def auth(data: AuthRequest) -> Dict:
                     logger.error(f"Invalid timeto value: {timeto}, error: {e}")
 
             # Выставляем услугу
-            if(not service_should_be_blocked):
-                ret.update({"reply:ERX-Service-Activate:1": "INET-FREEDOM(" + str(speed * 1100) + "k)"})
+            if not service_should_be_blocked:
+                calc_speed = int(float(speed) * 1100) if speed is not None else 0
+                ret.update(
+                    {"reply:ERX-Service-Activate:1": f"INET-FREEDOM({calc_speed}k)"}
+                )
             else:
                 ret.update({"reply:ERX-Service-Activate:1": "NOINET-NOMONEY()"})
-            
+
             # Реальник
-            if(login.ip_addr):
+            if login.ip_addr:
                 ret.update({"reply:Framed-IP-Address": login.ip_addr})
             # Серые пулы
             else:
-                ret.update({"reply:Framed-Pool": "pool-" + nasportid['psiface']})
-                
+                ret.update({"reply:Framed-Pool": "pool-" + nasportid["psiface"]})
+
             # IPv6 только одна сессия и активная
-            if(login.ipv6 and not service_should_be_blocked and session_count == 0):
-                ret.update({"reply:Framed-IPv6-Prefix": login.ipv6, "reply:Delegated-IPv6-Prefix": login.ipv6_pd})
+            if (
+                (getattr(login, "ipv6", None))
+                and not service_should_be_blocked
+                and session_count == 0
+            ):
+                ret.update(
+                    {
+                        "reply:Framed-IPv6-Prefix": login.ipv6,
+                        "reply:Delegated-IPv6-Prefix": getattr(login, "ipv6_pd", ""),
+                    }
+                )
 
             ret.update({"reply:ERX-Virtual-Router-Name": "bng"})
 
-            if(login.login == "znvpn7132"):
+            if login.login == "znvpn7132":
                 ret.update({"reply:Framed-Route": "80.244.41.248/29"})
 
-            if(login.auth_type == 'STATIC'):
+            if login.auth_type == "STATIC":
                 ret.update({"reply:Idle-Timeout": "10"})
 
-            ret.update({"reply:NAS-Port-Id": data.User_Name + ' | ' + login.login + ' | ' + data.ADSL_Agent_Remote_Id})
+            ret.update(
+                {
+                    "reply:NAS-Port-Id": (data.User_Name or "")
+                    + " | "
+                    + (login.login or "")
+                    + " | "
+                    + (data.ADSL_Agent_Remote_Id or "")
+                }
+            )
 
             # PPPoE
             if data.Framed_Protocol == "PPP":
-                ret.update({"control:Cleartext-Password": {"value": login.password}})
+                ret.update(
+                    {
+                        "control:Cleartext-Password": {
+                            "value": getattr(login, "password", "")
+                        }
+                    }
+                )
             # IPOE во всех вариантах
             else:
-                ret.update({"control:Cleartext-Password": {"value": "ipoe"}, "control:Auth-Type": {"value": "Accept"}})
+                ret.update(
+                    {
+                        "control:Cleartext-Password": {"value": "ipoe"},
+                        "control:Auth-Type": {"value": "Accept"},
+                    }
+                )
 
-            ret.update({"reply:Reply-Message": {"value": "Session type is " + login.auth_type}})
+            ret.update(
+                {
+                    "reply:Reply-Message": {
+                        "value": "Session type is " + (login.auth_type or "")
+                    }
+                }
+            )
 
             # Лимит сессий (нужно думать внимательн)
-            if(session_count >= session_limit):
-                ret.update({"reply:Reply-Message": {"value": "Session count over limit:" + str(session_count) + " login:" + login.login},
-                            "control:Auth-Type": {"value": "Reject"}})
+            if session_count >= session_limit:
+                ret.update(
+                    {
+                        "reply:Reply-Message": {
+                            "value": "Session count over limit:"
+                            + str(session_count)
+                            + " login:"
+                            + (login.login or "")
+                        },
+                        "control:Auth-Type": {"value": "Reject"},
+                    }
+                )
             # Дублирующая сессия, уже установленная на другом брасе, нужно разрешать
-            if(data.Framed_IP_Address):
-                ret.update({"reply:Framed-IPv6-Prefix": login.ipv6, "reply:Delegated-IPv6-Prefix": login.ipv6_pd})
-                ret.update({"reply:Reply-Message": {"value": "Session is duplicated, type "  + login.auth_type},
-                            "control:Auth-Type": {"value": "Accept"}})
+            if data.Framed_IP_Address:
+                if getattr(login, "ipv6", None):
+                    ret.update(
+                        {
+                            "reply:Framed-IPv6-Prefix": login.ipv6,
+                            "reply:Delegated-IPv6-Prefix": getattr(
+                                login, "ipv6_pd", ""
+                            ),
+                        }
+                    )
+                ret.update(
+                    {
+                        "reply:Reply-Message": {
+                            "value": "Session is duplicated, type "
+                            + (login.auth_type or "")
+                        },
+                        "control:Auth-Type": {"value": "Accept"},
+                    }
+                )
             # Реальник и есть другая сессия
-            if(session_count > 0 and login.ip_addr):
-                ret.update({"reply:Reply-Message": {"value": "Static IP limit:" + str(login.ip_addr) + " login:" + login.login},
-                            "control:Auth-Type": {"value": "Reject"}})
+            if session_count > 0 and login.ip_addr:
+                ret.update(
+                    {
+                        "reply:Reply-Message": {
+                            "value": "Static IP limit:"
+                            + str(login.ip_addr)
+                            + " login:"
+                            + (login.login or "")
+                        },
+                        "control:Auth-Type": {"value": "Reject"},
+                    }
+                )
 
         # Видеокамеры
         elif login and login.auth_type == "VIDEO":
-            ret.update({"reply:Framed-IP-Address": login.ipAddress,
-                        "reply:ERX-Service-Activate:1": "INET-VIDEO()",
-                        "reply:ERX-Virtual-Router-Name": "video",
-                        "reply:NAS-Port-Id": data.User_Name + ' | ' + login.login + ' | ' + data.ADSL_Agent_Remote_Id,
-                        "reply:Reply-Message": {"value": "Session type is " + login.auth_type},
-                        "control:Auth-Type": {"value": "Accept"}
-                        })
+            ret.update(
+                {
+                    "reply:Framed-IP-Address": getattr(login, "ipAddress", ""),
+                    "reply:ERX-Service-Activate:1": "INET-VIDEO()",
+                    "reply:ERX-Virtual-Router-Name": "video",
+                    "reply:NAS-Port-Id": (data.User_Name or "")
+                    + " | "
+                    + (login.login or "")
+                    + " | "
+                    + (data.ADSL_Agent_Remote_Id or ""),
+                    "reply:Reply-Message": {
+                        "value": "Session type is " + (login.auth_type or "")
+                    },
+                    "control:Auth-Type": {"value": "Accept"},
+                }
+            )
         # Договор не найден, сессия не авторизована
         else:
-            ret.update({"reply:Reply-Message": {"value": "Session is unauth, login not found"}})
+            ret.update(
+                {"reply:Reply-Message": {"value": "Session is unauth, login not found"}}
+            )
 
         return ret
 

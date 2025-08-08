@@ -7,7 +7,13 @@ from typing import Optional
 from pydantic import ValidationError
 from redis_client import get_redis, execute_redis_command
 from config import RADIUS_LOGIN_PREFIX
-from schemas import AccountingData, AuthRequest, EnrichedSessionData, LoginSearchResult, SessionData
+from schemas import (
+    AccountingData,
+    AuthRequest,
+    EnrichedSessionData,
+    LoginSearchResult,
+    SessionData,
+)
 from utils import is_mac_username, mac_from_hex, mac_from_username, nasportid_parse
 
 logger = logging.getLogger(__name__)
@@ -74,11 +80,15 @@ async def save_session_to_redis(session_data: SessionData, redis_key: str) -> bo
     try:
         redis = await get_redis()
         # Сохраняем сессию в формате RedisJSON с алиасами (дефисами)
-        await redis.execute_command(
-            "JSON.SET", redis_key, "$", session_data.model_dump_json(by_alias=True)
+        await execute_redis_command(
+            redis,
+            "JSON.SET",
+            redis_key,
+            "$",
+            session_data.model_dump_json(by_alias=True),
         )
-        # Устанавливаем TTL на 30 минут
-        await redis.expire(redis_key, 1800)
+        # Устанавливаем TTL на 30 минут (через общий wrapper)
+        await execute_redis_command(redis, "EXPIRE", redis_key, 1800)
         logger.debug(f"Session saved to RedisJSON: {redis_key}")
         return True
     except Exception as e:
@@ -90,7 +100,7 @@ async def delete_session_from_redis(redis_key: str) -> bool:
     """Удаление сессии из Redis"""
     try:
         redis = await get_redis()
-        result = await redis.delete(redis_key)
+        result = await execute_redis_command(redis, "DEL", redis_key)
         logger.debug(f"Session deleted from Redis: {redis_key}, result: {result}")
         return result > 0
     except Exception as e:
@@ -122,7 +132,7 @@ async def search_redis(
     """
     try:
         if key_type == "FT.SEARCH":
-            result = await redis.execute_command("FT.SEARCH", index, query)
+            result = await execute_redis_command(redis, "FT.SEARCH", index, query)
             if not result or result[0] == 0:
                 logger.debug(f"No results for {key_type} query: {query}")
                 return None
@@ -134,7 +144,7 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
-            result = await redis.execute_command("JSON.GET", redis_key)
+            result = await execute_redis_command(redis, "JSON.GET", redis_key)
             if not result:
                 logger.debug(f"No data found for key: {redis_key}")
                 return None
@@ -161,7 +171,9 @@ async def search_redis(
         return None
 
 
-async def find_login_by_session(session: AccountingData | AuthRequest) -> Optional[LoginSearchResult]:
+async def find_login_by_session(
+    session: AccountingData | AuthRequest,
+) -> Optional[LoginSearchResult]:
     """
     Асинхронный поиск логина по данным сессии.
 
@@ -205,7 +217,9 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
 
             # Поиск камеры по МАКу
             search_query = f"@mac:{{{mac}}}"
-            result = await search_redis(redis, search_query, auth_type="VIDEO", index="idx:device")
+            result = await search_redis(
+                redis, search_query, auth_type="VIDEO", index="idx:device"
+            )
             if result:
                 return result
 
@@ -223,7 +237,8 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
             if static_match:
                 ip = static_match.groups()[0]
                 logger.debug(f"Static session, IP: {ip}")
-                search_query = f"@ip_addr:{{{ip.replace('.', '\\.')}}}@vlan:{{{vlan}}}"
+                escaped_ip = ip.replace(".", "\\.")
+                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
                     return result
@@ -249,13 +264,15 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
         exec_time = time.time() - start_time
         logger.debug(f"Login search took {exec_time:.3f}s")
 
+
 async def find_sessions_by_login(login: str) -> int:
     redis = await get_redis()
-    
-    query = f"@login:{{{login.replace("-", r"\-")}}}"
-    index="idx:radius:session"
 
-    result = await redis.execute_command("FT.SEARCH", index, query)
+    escaped_login = login.replace("-", r"\-")
+    query = f"@login:{{{escaped_login}}}"
+    index = "idx:radius:session"
+
+    result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 
     session_count = 0
     if result:

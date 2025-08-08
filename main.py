@@ -1,18 +1,18 @@
-from typing import Dict
 import uvicorn
 import uvloop
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from schemas import AccountingData, AccountingResponse, AuthRequest, AuthResponse
+from schemas import AccountingData, AccountingResponse, AuthRequest
+from typing import Dict
 from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
-from metrics import get_metrics_summary
+from metrics import get_metrics_summary, get_prometheus_metrics
 
 # Настройка логирования
 logging.basicConfig(
@@ -20,6 +20,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(), logging.FileHandler("radius_core.log")],
 )
+
+logging.getLogger("aio_pika").setLevel(logging.INFO)
+logging.getLogger("aiormq").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def metrics():
     """Метрики сервиса"""
     return get_metrics_summary()
+
+
+@app.get("/metrics_prom")
+async def metrics_prometheus():
+    """Prometheus-совместимые метрики (для скрейпа Prometheus/Grafana)."""
+    payload, content_type = get_prometheus_metrics()
+    return Response(content=payload, media_type=content_type)
 
 
 @app.get("/health")

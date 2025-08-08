@@ -2,14 +2,13 @@ FROM python:3.11-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-ADD . /app
-
 WORKDIR /app
 
-RUN uv venv
+COPY pyproject.toml uv.lock* ./
 
-ENV UV_PROJECT_ENVIRONMENT=/env
+RUN uv venv && \
+    UV_PROJECT_ENVIRONMENT=/env uv sync --no-cache
 
-RUN uv sync --no-cache
+COPY . .
 
 CMD ["uv", "run", "main.py"]

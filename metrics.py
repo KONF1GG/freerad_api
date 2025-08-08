@@ -3,6 +3,14 @@ import logging
 from typing import Dict, Any, Optional
 from collections import defaultdict
 from datetime import datetime, timezone
+from prometheus_client import (
+    Counter,
+    Gauge,
+    Histogram,
+    CollectorRegistry,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +23,11 @@ class MetricsCollector:
         self.timers = defaultdict(list)
         self.gauges = defaultdict(float)
         self.histograms = defaultdict(list)
+        # Prometheus registry and metrics
+        self.registry = CollectorRegistry()
+        self.prom_counters = {}
+        self.prom_gauges = {}
+        self.prom_histograms = {}
 
     def increment_counter(self, name: str, tags: Optional[Dict[str, str]] = None):
         """Увеличить счетчик"""
@@ -22,6 +35,10 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.counters[key] += 1
+        # Prometheus
+        lbls = tags or {}
+        prom = self._get_or_create_counter(name, sorted(lbls.keys()))
+        prom.labels(**lbls).inc()
 
     def set_gauge(self, name: str, value: float, tags: Optional[Dict[str, str]] = None):
         """Установить значение gauge"""
@@ -29,6 +46,10 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.gauges[key] = value
+        # Prometheus
+        lbls = tags or {}
+        prom = self._get_or_create_gauge(name, sorted(lbls.keys()))
+        prom.labels(**lbls).set(value)
 
     def record_timer(
         self, name: str, duration: float, tags: Optional[Dict[str, str]] = None
@@ -38,6 +59,9 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.timers[key].append(duration)
+        lbls = tags or {}
+        prom = self._get_or_create_histogram(name, sorted(lbls.keys()))
+        prom.labels(**lbls).observe(duration)
 
         # Ограничиваем историю
         if len(self.timers[key]) > 1000:
@@ -51,6 +75,10 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.histograms[key].append(value)
+        # Prometheus
+        lbls = tags or {}
+        prom = self._get_or_create_histogram(name, sorted(lbls.keys()))
+        prom.labels(**lbls).observe(value)
 
         # Ограничиваем историю
         if len(self.histograms[key]) > 1000:
@@ -98,6 +126,36 @@ class MetricsCollector:
 
         return stats
 
+    def prom_exposition(self) -> tuple[bytes, str]:
+        """Render Prometheus metrics payload and content-type."""
+        if self.registry is None:
+            return generate_latest(None), CONTENT_TYPE_LATEST  # type: ignore
+        return generate_latest(self.registry), CONTENT_TYPE_LATEST
+
+    def _get_or_create_counter(self, name: str, label_names: list[str]) -> Counter:
+        if name not in self.prom_counters:
+            # type: ignore[arg-type]
+            self.prom_counters[name] = Counter(
+                name, name, labelnames=label_names, registry=self.registry
+            )
+        return self.prom_counters[name]
+
+    def _get_or_create_gauge(self, name: str, label_names: list[str]) -> Gauge:
+        if name not in self.prom_gauges:
+            # type: ignore[arg-type]
+            self.prom_gauges[name] = Gauge(
+                name, name, labelnames=label_names, registry=self.registry
+            )
+        return self.prom_gauges[name]
+
+    def _get_or_create_histogram(self, name: str, label_names: list[str]) -> Histogram:
+        if name not in self.prom_histograms:
+            # type: ignore[arg-type]
+            self.prom_histograms[name] = Histogram(
+                name, name, labelnames=label_names, registry=self.registry
+            )
+        return self.prom_histograms[name]
+
     def _percentile(self, values: list, p: float) -> float:
         """Вычислить перцентиль"""
         if not values:
@@ -120,6 +178,10 @@ class MetricsCollector:
 
 # Глобальный экземпляр сборщика метрик
 metrics = MetricsCollector()
+
+
+def get_prometheus_metrics() -> tuple[bytes, str]:
+    return metrics.prom_exposition()
 
 
 def record_packet(operation: str, direction: str, auth_type: str = "UNKNOWN"):

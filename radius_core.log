@@ -1,6 +1,0 @@
-2025-08-05 14:06:09,472 - main - INFO - Starting Radius Core service...
-2025-08-05 14:06:09,495 - redis_client - INFO - Redis connection established successfully
-2025-08-05 14:06:09,499 - main - INFO - Redis connection established
-2025-08-05 14:06:09,555 - rabbitmq_client - INFO - RabbitMQ connection established successfully
-2025-08-05 14:06:09,555 - main - INFO - RabbitMQ connection established
-2025-08-05 14:06:14,203 - main - INFO - Shutting down Radius Core service...

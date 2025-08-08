@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 EVENT_FMT = "%b %d %Y %H:%M:%S +05"
 
 
-def parse_event(ts: str | datetime | dict) -> str:
-    """Парсит время в любом виде и возвращает строку в UTC: 'YYYY-MM-DD HH:MM:SS'"""
+def parse_event(ts: str | datetime | dict) -> datetime:
+    """Парсит время в любом виде и возвращает datetime в UTC"""
     dt = None
     try:
         if isinstance(ts, dict):
@@ -32,7 +32,7 @@ def parse_event(ts: str | datetime | dict) -> str:
         logger.error(f"Failed to parse event timestamp '{ts}': {e}")
         dt = datetime.now(timezone.utc)
     dt_utc = dt.astimezone(timezone.utc)
-    return dt_utc.strftime("%Y-%m-%d %H:%M:%S")
+    return dt_utc
 
 
 def now_str() -> str:
@@ -55,8 +55,19 @@ def mac_from_username(username: str) -> str:
     """Извлечение MAC-адреса из username"""
     if not username:
         return ""
-    mac = (username[0:2] + ':' + username[2:4] + ':' + username[5:7] + ':' \
-        + username[7:9] + ':' + username[10:12] + ':' + username[12:14]).upper()
+    mac = (
+        username[0:2]
+        + ":"
+        + username[2:4]
+        + ":"
+        + username[5:7]
+        + ":"
+        + username[7:9]
+        + ":"
+        + username[10:12]
+        + ":"
+        + username[12:14]
+    ).upper()
     return mac
 
 
@@ -80,7 +91,7 @@ def mac_from_hex(hex_var: str) -> str:
     for prefix, (offset, template, sep, need_decode) in PREFIX_MAP.items():
         if hex_var.startswith(prefix):
             body = hex_var[offset:]
-            if(need_decode):
+            if need_decode:
                 body = bytearray.fromhex(body).decode()
             if sep:
                 parts = [body[i : i + 2] for i in range(0, len(body), 2)]

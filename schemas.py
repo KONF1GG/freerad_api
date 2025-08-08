@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
-from typing import Optional, Union, Dict, Any, Literal
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, ConfigDict
+from typing import Optional, Dict, Any, Literal
 from utils import parse_event
 import logging
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ class BaseAccountingData(BaseModel):
     Acct_Session_Id: str = Field(..., alias="Acct-Session-Id")
     Acct_Status_Type: str = Field("UNKNOWN", alias="Acct-Status-Type")
     Event_Timestamp: datetime = Field(
-        datetime.now(tz=timezone.utc), alias="Event-Timestamp"
+        default_factory=lambda: datetime.now(tz=timezone.utc), alias="Event-Timestamp"
     )
     Acct_Unique_Session_Id: str = Field(..., alias="Acct-Unique-Session-Id")
 
@@ -67,8 +67,8 @@ class BaseAccountingData(BaseModel):
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> str:
-        """Parses a time string into a UNIX timestamp."""
+    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+        """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
     @field_validator(
@@ -122,8 +122,7 @@ class BaseAccountingData(BaseModel):
             )
             return 0
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AccountingData(BaseAccountingData):
@@ -142,8 +141,7 @@ class SessionData(BaseAccountingData):
     Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
     Acct_Update_Time: Optional[datetime] = Field(None, alias="Acct-Update-Time")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AccountingResponse(BaseModel):
@@ -174,15 +172,18 @@ class LoginBase(BaseModel):
     auth_type: Optional[str] = Field(default="UNAUTH", description="Тип аутентификации")
     contract: Optional[str] = Field(default="", description="Контракт пользователя")
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
-#    vlan: Optional[str] = Field(default="", description="VLAN")
+    #    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
         default=None, description="IP-адрес из данных логина"
     )
     servicecats: Optional[ServiceCats] = None
 
-    class Config:
-        extra = "allow"
-        allow_population_by_field_name = True
+    ipv6: Optional[str] = None
+    ipv6_pd: Optional[str] = None
+    password: Optional[str] = None
+    ipAddress: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class LoginSearchResult(LoginBase):
@@ -196,9 +197,7 @@ class EnrichedSessionData(AccountingData, LoginBase):
 
     service: Optional[str] = Field(default=None)
 
-    class Config:
-        extra = "allow"
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class TrafficData(BaseModel):
@@ -237,9 +236,7 @@ class TrafficData(BaseModel):
             return 0
         return max(0, int(value))
 
-    class Config:
-        extra = "allow"
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class AuthRequest(BaseModel):
@@ -276,25 +273,24 @@ class AuthRequest(BaseModel):
         ..., alias="ERX-DHCP-First-Relay-IPv4-Address"
     )
 
-#    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
+    #    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
 
     Event_Timestamp: datetime = Field(
-        datetime.now(tz=timezone.utc), alias="Event-Timestamp"
+        default_factory=lambda: datetime.now(tz=timezone.utc), alias="Event-Timestamp"
     )
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> str:
-        """Parses a time string into a UNIX timestamp."""
+    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+        """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
-    class Config:
-        extra = "allow"
-        allow_population_by_field_name = True
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class AuthResponse(BaseModel):
     success: bool
     message: Optional[str] = None
-    attributes: Dict[str, str] = {}
+    attributes: Dict[str, Any] = Field(default_factory=dict)
 
 
 RABBIT_MODELS = TrafficData | SessionData
