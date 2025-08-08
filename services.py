@@ -579,7 +579,7 @@ async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> 
             f"Ошибка при сохранении сессии {session_data.Acct_Unique_Session_Id}: {e}"
         )
         metrics.record_error("clickhouse_save_session_error", "ch_save_session")
-        return False
+        raise
     finally:
         exec_time = time.time() - start_time
         metrics.record_operation_duration("ch_save_session", exec_time, status)
