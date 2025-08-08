@@ -3,7 +3,13 @@ import asyncio
 import logging
 from typing import Optional
 from contextlib import asynccontextmanager
-from config import REDIS_URL, REDIS_POOL_SIZE, REDIS_CONCURRENCY, REDIS_COMMAND_TIMEOUT
+from config import (
+    REDIS_URL,
+    REDIS_POOL_SIZE,
+    REDIS_CONCURRENCY,
+    REDIS_COMMAND_TIMEOUT,
+    REDIS_WARNING_THRESHOLD,
+)
 
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
@@ -38,9 +44,9 @@ class RedisClient:
                             ),
                             socket_keepalive=True,
                             socket_keepalive_options={},
-                            health_check_interval=30,
-                            socket_connect_timeout=10,
-                            socket_timeout=10,
+                            health_check_interval=15,  # More frequent health checks
+                            socket_connect_timeout=5,  # Faster timeout
+                            socket_timeout=5,  # Faster timeout
                         )
                         self._redis = redis.Redis(connection_pool=self._pool)
                         # Проверяем соединение
@@ -92,6 +98,17 @@ async def get_redis_connection():
             pass
 
 
+@asynccontextmanager
+async def get_redis_connection_optimized():
+    """Оптимизированный контекстный менеджер для пакетных операций"""
+    redis_client = await _redis_client.get_client()
+    try:
+        yield redis_client
+    finally:
+        # Соединение возвращается в пул автоматически
+        pass
+
+
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
     # Логируем количество задач, ожидающих семафор
@@ -100,7 +117,8 @@ async def get_redis() -> redis.Redis:
         if _redis_client._semaphore._waiters
         else 0
     )
-    if waiting_tasks > 5:
+    # Only warn if waiting tasks exceed the new threshold
+    if waiting_tasks > REDIS_WARNING_THRESHOLD:
         logger.warning(
             f"High Redis connection contention: {waiting_tasks} tasks waiting"
         )
@@ -149,4 +167,36 @@ async def execute_redis_command(redis_client, *args, timeout: float | None = Non
         duration = asyncio.get_event_loop().time() - start
         metrics.record_external_call("redis", str(args[0]), "error", duration)
         logger.error(f"Redis command error: {e}")
+        raise
+
+
+async def execute_redis_pipeline(commands: list, timeout: float | None = None):
+    """Выполнить пакет команд Redis через pipeline для повышения производительности"""
+    start = asyncio.get_event_loop().time()
+    eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
+
+    try:
+        async with _redis_client._semaphore:
+            redis_client = await _redis_client.get_client()
+            pipe = redis_client.pipeline()
+
+            # Добавляем команды в pipeline
+            for cmd in commands:
+                pipe.execute_command(*cmd)
+
+            # Выполняем весь пакет
+            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+
+        duration = asyncio.get_event_loop().time() - start
+        metrics.record_external_call("redis", "pipeline", "success", duration)
+        return result
+    except asyncio.TimeoutError:
+        duration = asyncio.get_event_loop().time() - start
+        metrics.record_external_call("redis", "pipeline", "timeout", duration)
+        logger.error(f"Redis pipeline timeout after {eff_timeout}s")
+        raise
+    except Exception as e:
+        duration = asyncio.get_event_loop().time() - start
+        metrics.record_external_call("redis", "pipeline", "error", duration)
+        logger.error(f"Redis pipeline error: {e}")
         raise

@@ -5,7 +5,12 @@ import logging
 from typing import Optional
 
 from pydantic import ValidationError
-from redis_client import get_redis, execute_redis_command
+from redis_client import (
+    get_redis,
+    execute_redis_command,
+    execute_redis_pipeline,
+    get_redis_connection_optimized,
+)
 from config import RADIUS_LOGIN_PREFIX
 from schemas import (
     AccountingData,
@@ -76,20 +81,15 @@ async def process_traffic_data(session_req: EnrichedSessionData) -> EnrichedSess
 
 
 async def save_session_to_redis(session_data: SessionData, redis_key: str) -> bool:
-    """Сохранение сессии в Redis"""
+    """Сохранение сессии в Redis с оптимизацией через pipeline"""
     try:
-        redis = await get_redis()
-        # Сохраняем сессию в формате RedisJSON с алиасами (дефисами)
-        await execute_redis_command(
-            redis,
-            "JSON.SET",
-            redis_key,
-            "$",
-            session_data.model_dump_json(by_alias=True),
-        )
-        # Устанавливаем TTL на 30 минут (через общий wrapper)
-        await execute_redis_command(redis, "EXPIRE", redis_key, 1800)
-        logger.debug(f"Session saved to RedisJSON: {redis_key}")
+        # Используем pipeline для выполнения двух команд за один раз
+        commands = [
+            ("JSON.SET", redis_key, "$", session_data.model_dump_json(by_alias=True)),
+            ("EXPIRE", redis_key, 1800),  # TTL на 30 минут
+        ]
+        await execute_redis_pipeline(commands)
+        logger.debug(f"Session saved to RedisJSON with TTL: {redis_key}")
         return True
     except Exception as e:
         logger.error(f"Failed to save session to RedisJSON: {e}")

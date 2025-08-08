@@ -16,7 +16,7 @@ from crud import (
     find_sessions_by_login,
 )
 from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
-from redis_client import get_redis, execute_redis_command
+from redis_client import get_redis, execute_redis_command, execute_redis_pipeline
 from rabbitmq_client import rmq_send_message
 from utils import now_str, nasportid_parse
 

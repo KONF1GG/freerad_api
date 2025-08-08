@@ -23,7 +23,6 @@ class MetricsCollector:
         self.timers = defaultdict(list)
         self.gauges = defaultdict(float)
         self.histograms = defaultdict(list)
-        # Prometheus registry and metrics
         self.registry = CollectorRegistry()
         self.prom_counters = {}
         self.prom_gauges = {}
@@ -35,7 +34,6 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.counters[key] += 1
-        # Prometheus
         lbls = tags or {}
         prom = self._get_or_create_counter(name, sorted(lbls.keys()))
         prom.labels(**lbls).inc()
@@ -46,7 +44,6 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.gauges[key] = value
-        # Prometheus
         lbls = tags or {}
         prom = self._get_or_create_gauge(name, sorted(lbls.keys()))
         prom.labels(**lbls).set(value)
@@ -63,7 +60,6 @@ class MetricsCollector:
         prom = self._get_or_create_histogram(name, sorted(lbls.keys()))
         prom.labels(**lbls).observe(duration)
 
-        # Ограничиваем историю
         if len(self.timers[key]) > 1000:
             self.timers[key] = self.timers[key][-1000:]
 
@@ -75,12 +71,10 @@ class MetricsCollector:
             tags = {}
         key = self._make_key(name, tags)
         self.histograms[key].append(value)
-        # Prometheus
         lbls = tags or {}
         prom = self._get_or_create_histogram(name, sorted(lbls.keys()))
         prom.labels(**lbls).observe(value)
 
-        # Ограничиваем историю
         if len(self.histograms[key]) > 1000:
             self.histograms[key] = self.histograms[key][-1000:]
 
