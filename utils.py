@@ -55,31 +55,33 @@ def mac_from_username(username: str) -> str:
     """Извлечение MAC-адреса из username"""
     if not username:
         return ""
-    # Приводим к стандартному формату xx:xx:xx:xx:xx:xx
-    mac = username.replace("-", ":").lower()
+    mac = (username[0:2] + ':' + username[2:4] + ':' + username[5:7] + ':' \
+        + username[7:9] + ':' + username[10:12] + ':' + username[12:14]).upper()
     return mac
 
 
-PREFIX_MAP: Dict[str, Tuple[int, str, str]] = {
-    "0x454c5458": (10, "ELTX{}", ""),
-    "0x485754436a": (10, "70:A5:{}", ":"),
-    "0x48575443a6": (10, "80:F7:{}", ":"),
-    "0x48575443e6": (10, "E0:E8:{}", ":"),
-    "0x485754431d": (10, "50:5B:{}", ":"),
-    "0x485754433641": (10, "70:A5:{}", ":"),
-    "0x485754434136": (10, "80:F7:{}", ":"),
-    "0x485754433144": (10, "50:5B:{}", ":"),
-    "0x34383537353434333641": (18, "70:A5:{}", ":"),
-    "0x34383537353434334136": (18, "80:F7:{}", ":"),
-    "0x34383537353434333144": (18, "50:5B:{}", ":"),
+PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
+    "0x454c5458": (10, "ELTX{}", "", False),
+    "0x485754436a": (10, "70:A5:{}", ":", False),
+    "0x48575443a6": (10, "80:F7:{}", ":", False),
+    "0x48575443e6": (10, "E0:E8:{}", ":", False),
+    "0x485754431d": (10, "50:5B:{}", ":", False),
+    "0x485754433641": (10, "70:A5:{}", ":", True),
+    "0x485754434136": (10, "80:F7:{}", ":", True),
+    "0x485754433144": (10, "50:5B:{}", ":", True),
+    "0x34383537353434333641": (18, "70:A5:{}", ":", True),
+    "0x34383537353434334136": (18, "80:F7:{}", ":", True),
+    "0x34383537353434333144": (18, "50:5B:{}", ":", True),
 }
 
 
 def mac_from_hex(hex_var: str) -> str:
     hex_var = hex_var.lower()
-    for prefix, (offset, template, sep) in PREFIX_MAP.items():
+    for prefix, (offset, template, sep, need_decode) in PREFIX_MAP.items():
         if hex_var.startswith(prefix):
             body = hex_var[offset:]
+            if(need_decode):
+                body = bytearray.fromhex(body).decode()
             if sep:
                 parts = [body[i : i + 2] for i in range(0, len(body), 2)]
                 return template.format(sep.join(parts)).upper()

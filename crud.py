@@ -196,8 +196,16 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
         if is_mac_username(username):
             logger.debug(f"IPoE session, MAC username: {username}")
             mac = mac_from_username(username).replace(":", r"\:")
+
+            # Поиск логина по МАКу
             search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
+            if result:
+                return result
+
+            # Поиск камеры по МАКу
+            search_query = f"@mac:{{{mac}}}"
+            result = await search_redis(redis, search_query, auth_type="VIDEO", index="idx:device")
             if result:
                 return result
 
@@ -241,5 +249,16 @@ async def find_login_by_session(session: AccountingData | AuthRequest) -> Option
         exec_time = time.time() - start_time
         logger.debug(f"Login search took {exec_time:.3f}s")
 
-def find_sessions_by_login(login: str):
-    return
+async def find_sessions_by_login(login: str) -> int:
+    redis = await get_redis()
+    
+    query = f"@login:{{{login.replace("-", r"\-")}}}"
+    index="idx:radius:session"
+
+    result = await redis.execute_command("FT.SEARCH", index, query)
+
+    session_count = 0
+    if result:
+        session_count = result[0]
+
+    return session_count

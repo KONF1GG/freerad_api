@@ -313,13 +313,16 @@ async def auth(data: AuthRequest) -> Dict:
         logger.info(f"Попытка авторизации: {data}")
 
         login = await find_login_by_session(data)
-        logger.info(f"Логин: {login}")
+        logger.debug(f"Логин: {login}")
+        session_limit = 2
         ret = {}
         nasportid = nasportid_parse(data.NAS_Port_Id)
 
         # Договор найден, авторизуем
-        if login:
-            sessions = find_sessions_by_login(login.login)
+        if login and login.auth_type != "VIDEO":
+            session_count = await find_sessions_by_login(login.login)
+            logger.debug(f"Сессии найдены: {session_count}")
+
             timeto = getattr(
                 getattr(getattr(login, "servicecats", None), "internet", None),
                 "timeto",
@@ -348,11 +351,15 @@ async def auth(data: AuthRequest) -> Dict:
             else:
                 ret.update({"reply:ERX-Service-Activate:1": "NOINET-NOMONEY()"})
             
+            # Реальник
             if(login.ip_addr):
                 ret.update({"reply:Framed-IP-Address": login.ip_addr})
+            # Серые пулы
             else:
                 ret.update({"reply:Framed-Pool": "pool-" + nasportid['psiface']})
-            if(login.ipv6 and not sessions):
+                
+            # IPv6 только одна сессия и активная
+            if(login.ipv6 and not service_should_be_blocked and session_count == 0):
                 ret.update({"reply:Framed-IPv6-Prefix": login.ipv6, "reply:Delegated-IPv6-Prefix": login.ipv6_pd})
 
             ret.update({"reply:ERX-Virtual-Router-Name": "bng"})
@@ -365,7 +372,6 @@ async def auth(data: AuthRequest) -> Dict:
 
             ret.update({"reply:NAS-Port-Id": data.User_Name + ' | ' + login.login + ' | ' + data.ADSL_Agent_Remote_Id})
 
-
             # PPPoE
             if data.Framed_Protocol == "PPP":
                 ret.update({"control:Cleartext-Password": {"value": login.password}})
@@ -375,6 +381,29 @@ async def auth(data: AuthRequest) -> Dict:
 
             ret.update({"reply:Reply-Message": {"value": "Session type is " + login.auth_type}})
 
+            # Лимит сессий (нужно думать внимательн)
+            if(session_count >= session_limit):
+                ret.update({"reply:Reply-Message": {"value": "Session count over limit:" + str(session_count) + " login:" + login.login},
+                            "control:Auth-Type": {"value": "Reject"}})
+            # Дублирующая сессия, уже установленная на другом брасе, нужно разрешать
+            if(data.Framed_IP_Address):
+                ret.update({"reply:Framed-IPv6-Prefix": login.ipv6, "reply:Delegated-IPv6-Prefix": login.ipv6_pd})
+                ret.update({"reply:Reply-Message": {"value": "Session is duplicated, type "  + login.auth_type},
+                            "control:Auth-Type": {"value": "Accept"}})
+            # Реальник и есть другая сессия
+            if(session_count > 0 and login.ip_addr):
+                ret.update({"reply:Reply-Message": {"value": "Static IP limit:" + str(login.ip_addr) + " login:" + login.login},
+                            "control:Auth-Type": {"value": "Reject"}})
+
+        # Видеокамеры
+        elif login and login.auth_type == "VIDEO":
+            ret.update({"reply:Framed-IP-Address": login.ipAddress,
+                        "reply:ERX-Service-Activate:1": "INET-VIDEO()",
+                        "reply:ERX-Virtual-Router-Name": "video",
+                        "reply:NAS-Port-Id": data.User_Name + ' | ' + login.login + ' | ' + data.ADSL_Agent_Remote_Id,
+                        "reply:Reply-Message": {"value": "Session type is " + login.auth_type},
+                        "control:Auth-Type": {"value": "Accept"}
+                        })
         # Договор не найден, сессия не авторизована
         else:
             ret.update({"reply:Reply-Message": {"value": "Session is unauth, login not found"}})
