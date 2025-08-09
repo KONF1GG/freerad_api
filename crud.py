@@ -1,4 +1,3 @@
-import asyncio
 import time
 import re
 import json
@@ -10,7 +9,6 @@ from redis_client import (
     get_redis,
     execute_redis_command,
     execute_redis_pipeline,
-    get_redis_connection_optimized,
 )
 from config import RADIUS_LOGIN_PREFIX
 from schemas import (

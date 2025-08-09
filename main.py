@@ -13,17 +13,10 @@ from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary, get_prometheus_metrics
+from logging_setup import configure_logging, start_request_context
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("radius_core.log")],
-)
-
-logging.getLogger("aio_pika").setLevel(logging.INFO)
-logging.getLogger("aiormq").setLevel(logging.INFO)
-
+# Настройка структурированного логирования (JSON + контекст)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Установка политики событийного цикла
@@ -59,6 +52,34 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    """Встраивает контекст запроса (request_id/trace_id/метаданные) в логи."""
+    request_id = request.headers.get("x-request-id")
+    client_ip = (
+        request.headers.get("x-forwarded-for") or request.client.host
+        if request.client
+        else None
+    )
+    ctx = start_request_context(
+        request_id=request_id,
+        method=request.method,
+        path=str(request.url.path),
+        client_ip=client_ip,
+    )
+    logger.debug("Incoming request")
+    try:
+        response = await call_next(request)
+        # Протаскиваем request-id в ответ
+        if ctx.get("request_id"):
+            response.headers["x-request-id"] = ctx["request_id"]
+        return response
+    finally:
+        # Можно дополнительно логировать сводку
+        logger.debug("Request finished")
+
 
 # Добавляем CORS middleware
 app.add_middleware(
@@ -137,7 +158,9 @@ async def do_acct(data: AccountingData):
     try:
         return await process_accounting(data)
     except HTTPException as http_exc:
-        logger.error(f"HTTP error processing accounting request: {http_exc}", exc_info=True)
+        logger.error(
+            f"HTTP error processing accounting request: {http_exc}", exc_info=True
+        )
         raise
     except Exception as e:
         logger.error(f"Error processing accounting request: {e}", exc_info=True)
@@ -162,4 +185,5 @@ if __name__ == "__main__":
         reload=True,
         access_log=True,
         log_level="debug",
+        log_config=None,  # используем нашу конфигурацию логов
     )
