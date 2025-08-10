@@ -485,7 +485,13 @@ async def auth(data: AuthRequest) -> Dict:
         # Договор не найден, сессия не авторизована
         else:
             ret.update(
-                {"reply:Reply-Message": {"value": "Session is unauth, login not found"}}
+                {
+                    "reply:Reply-Message": "Session is unauth, login not found",
+                    "reply:Framed-Pool": "novlan",
+                    "reply:ERX-Virtual-Router-Name": "bng",
+                    "reply:ERX-Service-Activate:1": "NOVLAN()",
+                    "control:Auth-Type": "Accept"
+                }
             )
 
         return ret
