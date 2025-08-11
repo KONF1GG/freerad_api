@@ -1,19 +1,17 @@
 import os
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv()
 
 REDIS_URL: str = os.getenv("REDIS_URL", "")
-REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50")) 
+REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50"))
 REDIS_CONCURRENCY: int = int(
-    os.getenv(
-        "REDIS_CONCURRENCY", str(max(1, int(REDIS_POOL_SIZE * 0.8)))
-    ) 
+    os.getenv("REDIS_CONCURRENCY", str(max(1, int(REDIS_POOL_SIZE * 0.8))))
 )
 
-REDIS_COMMAND_TIMEOUT: float = float(
-    os.getenv("REDIS_COMMAND_TIMEOUT", "3.0")
-) 
-REDIS_WARNING_THRESHOLD: int = int(
-    os.getenv("REDIS_WARNING_THRESHOLD", "20")
-) 
+REDIS_COMMAND_TIMEOUT: float = float(os.getenv("REDIS_COMMAND_TIMEOUT", "3.0"))
+REDIS_WARNING_THRESHOLD: int = int(os.getenv("REDIS_WARNING_THRESHOLD", "20"))
 AMQP_URL: str = os.getenv("AMQP_URL", "")
 AMQP_EXCHANGE: str = os.getenv("AMQP_EXCHANGE", "sessions_traffic_exchange")
 AMQP_SESSION_QUEUE: str = os.getenv("AMQP_SESSION_QUEUE", "session_queue")

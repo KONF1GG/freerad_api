@@ -280,34 +280,21 @@ async def find_sessions_by_login(login: str) -> list[SessionData]:
         if not result or result[0] == 0:
             return []
 
-        # Отладочный вывод для понимания структуры данных
-        logger.debug(
-            f"FT.SEARCH result structure: {type(result)}, length: {len(result)}"
-        )
-        if len(result) >= 3:
-            logger.debug(f"First document key: {result[1]}")
-            logger.debug(f"First document fields: {result[2]}")
-            logger.debug(f"Fields type: {type(result[2])}")
-            if isinstance(result[2], list) and len(result[2]) >= 2:
-                logger.debug(
-                    f"Field names/values: {result[2][:6]}"
-                )  # Первые 6 элементов
+        sessions = []  # Результат: [count, key, fields] для одного документа
+        # Для нескольких: [count, key1, fields1, key2, fields2, ...]
+        num_results = result[0]
 
-        sessions = []
+        for i in range(num_results):
+            # Индекс полей: 2 + i*2
+            fields_index = 2 + i * 2
 
-        # Парсим результат: [count, key1, [field1, value1, ...], key2, [field2, value2, ...]]
-        for i in range(1, len(result), 2):
-            if i + 1 < len(result):
-                fields = result[i + 1]
+            if fields_index < len(result):
+                fields = result[fields_index]
 
-                json_data = None
-                if isinstance(fields, list):
-                    for j in range(0, len(fields), 2):
-                        if j + 1 < len(fields) and fields[j] in ("$", "json"):
-                            json_data = fields[j + 1]
-                            break
+                # fields = ['$', 'json_string']
+                if isinstance(fields, list) and len(fields) >= 2 and fields[0] == "$":
+                    json_data = fields[1]
 
-                if json_data:
                     try:
                         if isinstance(json_data, bytes):
                             json_data = json_data.decode("utf-8")
@@ -321,5 +308,4 @@ async def find_sessions_by_login(login: str) -> list[SessionData]:
 
     except Exception as e:
         logger.error(f"Error searching sessions for login '{login}': {e}")
-        return []
         return []
