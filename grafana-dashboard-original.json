@@ -1,0 +1,1366 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "RADIUS Core - Мониторинг Сервиса",
+    "tags": ["radius", "microservice", "performance", "monitoring"],
+    "style": "dark",
+    "timezone": "browser",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "refresh": "10s",
+    "templating": {
+      "list": [
+        {
+          "allValue": null,
+          "current": {
+            "isNone": true,
+            "selected": false,
+            "text": "Prometheus",
+            "value": "prometheus"
+          },
+          "hide": 0,
+          "includeAll": false,
+          "label": "Источник данных",
+          "multi": false,
+          "name": "datasource",
+          "options": [],
+          "query": "prometheus",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        },
+        {
+          "allValue": ".*",
+          "current": {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "definition": "label_values(http_requests_total, instance)",
+          "hide": 0,
+          "includeAll": true,
+          "label": "Инстанс",
+          "multi": true,
+          "name": "instance",
+          "options": [],
+          "query": {
+            "query": "label_values(http_requests_total, instance)",
+            "refId": "StandardVariableQuery"
+          },
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0,
+          "type": "query"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Обзор Системы",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Активные HTTP Запросы",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(http_requests_active{instance=~\"$instance\"})",
+            "legendFormat": "Всего",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "red", "value": 100}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Активные RADIUS Сессии",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(radius_active_sessions{instance=~\"$instance\"})",
+            "legendFormat": "Всего",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1000},
+                {"color": "red", "value": 5000}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Частота Ошибок",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(radius_errors_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "ошибок/сек",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 10}
+              ]
+            },
+            "unit": "reqps"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Использование Памяти",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(process_memory_rss_bytes{instance=~\"$instance\"}) / 1024 / 1024",
+            "legendFormat": "MB",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 512},
+                {"color": "red", "value": 1024}
+              ]
+            },
+            "unit": "decbytes"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Загрузка CPU",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "avg(process_cpu_percent{instance=~\"$instance\"})",
+            "legendFormat": "%",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "red", "value": 80}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Доступность Сервиса",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "avg(up{instance=~\"$instance\"}) * 100",
+            "legendFormat": "%",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "HTTP Метрики",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+        "collapsed": false
+      },
+      {
+        "id": 9,
+        "title": "Частота HTTP Запросов",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (method, path) (rate(http_requests_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{method}} {{path}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Время Ответа HTTP",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "99-й процентиль",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "95-й процентиль",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.90, sum by (le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "90-й процентиль",
+            "refId": "C"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "Медиана",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "HTTP Статус Коды",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 14},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (status_class) (rate(http_responses_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{status_class}}xx",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Топ Медленных Endpoint'ов",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 14},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "topk(10, histogram_quantile(0.95, sum by (path, method, le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m]))))",
+            "legendFormat": "{{method}} {{path}}",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "job": true,
+                "instance": true
+              },
+              "indexByName": {},
+              "renameByName": {
+                "method": "Метод",
+                "path": "Путь",
+                "Value": "Время ответа (с)"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "cellOptions": {
+                "type": "auto"
+              },
+              "inspect": false
+            },
+            "mappings": [],
+            "unit": "s"
+          },
+          "overrides": []
+        }
+      },
+      {
+        "id": 13,
+        "title": "Размер HTTP Тела Ответов",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 14},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_response_size_bytes_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "95-й процентиль",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(http_response_size_bytes_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "Медиана",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "RADIUS Метрики",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+        "collapsed": false
+      },
+      {
+        "id": 15,
+        "title": "Обработка RADIUS Пакетов",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (operation, direction) (rate(radius_packets_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{operation}} {{direction}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "pps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Типы RADIUS Accounting Пакетов",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (packet_type) (rate(radius_accounting_packets_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{packet_type}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "right"
+          },
+          "displayLabels": ["percent"]
+        }
+      },
+      {
+        "id": 17,
+        "title": "События Жизненного Цикла Сессий",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 31},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (event) (rate(radius_session_lifecycle_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{event}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 18,
+        "title": "Трафик по Направлениям",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 31},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (direction) (rate(radius_traffic_bytes_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{direction}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 19,
+        "title": "Активные Сессии по Типу Аутентификации",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 31},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (auth_type) (radius_active_sessions{instance=~\"$instance\"})",
+            "legendFormat": "{{auth_type}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              }
+            },
+            "mappings": []
+          }
+        }
+      },
+      {
+        "id": 20,
+        "title": "Инфраструктура",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39},
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Пул Соединений Redis",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 40},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "radius_redis_available_permits{instance=~\"$instance\"}",
+            "legendFormat": "Доступные разрешения",
+            "refId": "A"
+          },
+          {
+            "expr": "radius_redis_waiting_tasks{instance=~\"$instance\"}",
+            "legendFormat": "Ожидающие задачи",
+            "refId": "B"
+          },
+          {
+            "expr": "radius_redis_max_connections{instance=~\"$instance\"}",
+            "legendFormat": "Максимум соединений",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 22,
+        "title": "Время Вызова Внешних Сервисов",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 40},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (service, le) (rate(radius_external_call_duration_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "95-й процентиль {{service}}",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum by (service, le) (rate(radius_external_call_duration_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "Медиана {{service}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 23,
+        "title": "Системные Ресурсы",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 40},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "process_memory_rss_bytes{instance=~\"$instance\"} / 1024 / 1024",
+            "legendFormat": "Память RSS (MB) - {{instance}}",
+            "refId": "A"
+          },
+          {
+            "expr": "process_cpu_percent{instance=~\"$instance\"}",
+            "legendFormat": "CPU % - {{instance}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "CPU %"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Память RSS (MB)"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "decbytes"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 24,
+        "title": "Мониторинг Ошибок",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 48},
+        "collapsed": false
+      },
+      {
+        "id": 25,
+        "title": "Детализация Ошибок",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 49},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum by (error_type) (rate(radius_errors_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{error_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "axisColorMode": "text",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "axisCenteredZero": false,
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 26,
+        "title": "HTTP Ошибки по Endpoint'ам",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 49},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "topk(10, sum by (path, method, status_code) (rate(http_responses_total{status_class=\"4\",instance=~\"$instance\"}[5m]) + rate(http_responses_total{status_class=\"5\",instance=~\"$instance\"}[5m])))",
+            "legendFormat": "{{method}} {{path}} ({{status_code}})",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "job": true,
+                "instance": true
+              },
+              "indexByName": {},
+              "renameByName": {
+                "method": "Метод",
+                "path": "Путь",
+                "status_code": "Код ошибки",
+                "Value": "Частота ошибок/сек"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "cellOptions": {
+                "type": "auto"
+              },
+              "inspect": false
+            },
+            "mappings": [],
+            "unit": "reqps"
+          },
+          "overrides": []
+        }
+      },
+      {
+        "id": 27,
+        "title": "Производительность",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 57},
+        "collapsed": false
+      },
+      {
+        "id": 28,
+        "title": "Пропускная Способность",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 58},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "Запросов/сек",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 10},
+                {"color": "green", "value": 50}
+              ]
+            },
+            "unit": "reqps"
+          }
+        }
+      },
+      {
+        "id": 29,
+        "title": "Средняя Задержка",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 58},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{instance=~\"$instance\"}[5m])))",
+            "legendFormat": "Медиана",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.1},
+                {"color": "red", "value": 0.5}
+              ]
+            },
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 30,
+        "title": "Коэффициент Успешности",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 58},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(http_responses_total{status_class=\"2\",instance=~\"$instance\"}[5m])) / sum(rate(http_responses_total{instance=~\"$instance\"}[5m])) * 100",
+            "legendFormat": "Успешных %",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 31,
+        "title": "Статистика RabbitMQ",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 58},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "targets": [
+          {
+            "expr": "sum(radius_rabbitmq_messages_published{instance=~\"$instance\"})",
+            "legendFormat": "Сообщений отправлено",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1000},
+                {"color": "red", "value": 10000}
+              ]
+            },
+            "unit": "short"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -26,6 +26,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # Нормализуем путь для метрик (убираем динамические части)
         normalized_path = self._normalize_path(path)
 
+        # Если путь не нужен для метрик, просто выполняем запрос без сбора метрик
+        if normalized_path is None:
+            return await call_next(request)
+
         # Засекаем время начала
         start_time = time.time()
 
@@ -106,32 +110,18 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 {"method": method, "path": normalized_path, "_dec": "true"},
             )
 
-    def _normalize_path(self, path: str) -> str:
+    def _normalize_path(self, path: str) -> str | None:
         """Нормализация пути для группировки в метриках"""
         path = unquote(path)
 
-        # Группируем известные эндпоинты
-        if path == "/":
-            return "/"
-        elif path == "/health":
-            return "/health"
-        elif path == "/metrics":
-            return "/metrics"
-        elif path == "/metrics_prom":
-            return "/metrics_prom"
-        elif path == "/acct/":
+        # Собираем метрики только для нужных эндпоинтов
+        if path == "/acct/":
             return "/acct/"
         elif path == "/authorize/":
             return "/authorize/"
-        elif path.startswith("/docs"):
-            return "/docs"
-        elif path.startswith("/redoc"):
-            return "/redoc"
-        elif path.startswith("/openapi.json"):
-            return "/openapi.json"
         else:
-            # Для неизвестных путей оставляем как есть, но ограничиваем длину
-            return path[:100] if len(path) <= 100 else path[:100] + "..."
+            # Для всех остальных путей возвращаем None чтобы не собирать метрики
+            return None
 
 
 class ResourceMetricsMiddleware(BaseHTTPMiddleware):
