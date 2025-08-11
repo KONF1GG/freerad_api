@@ -18,7 +18,7 @@ from crud import (
     find_sessions_by_login,
 )
 from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
-from redis_client import get_redis, execute_redis_command, execute_redis_pipeline
+from redis_client import get_redis, execute_redis_command
 from rabbitmq_client import rmq_send_message
 from utils import now_str, nasportid_parse
 
@@ -319,7 +319,8 @@ async def auth(data: AuthRequest) -> Dict:
 
         # Договор найден, авторизуем
         if login and login.auth_type != "VIDEO":
-            session_count = await find_sessions_by_login(login.login or "")
+            sessions = await find_sessions_by_login(login.login or "")
+            session_count = len(sessions)
             logger.debug(f"Сессии найдены: {session_count}")
 
             timeto = getattr(
@@ -490,13 +491,15 @@ async def auth(data: AuthRequest) -> Dict:
                     "reply:Framed-Pool": "novlan",
                     "reply:ERX-Virtual-Router-Name": "bng",
                     "reply:ERX-Service-Activate:1": "NOVLAN()",
-                    "control:Auth-Type": "Accept"
+                    "control:Auth-Type": "Accept",
                 }
             )
 
         return ret
     except HTTPException as http_exc:
-        logger.error(f"HTTP error processing authorization request: {http_exc}", exc_info=True)
+        logger.error(
+            f"HTTP error processing authorization request: {http_exc}", exc_info=True
+        )
         raise
     except Exception as e:
         logger.error(f"Error processing authorization request: {e}", exc_info=True)

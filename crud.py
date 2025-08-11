@@ -1,4 +1,3 @@
-import asyncio
 import time
 import re
 import json
@@ -10,7 +9,6 @@ from redis_client import (
     get_redis,
     execute_redis_command,
     execute_redis_pipeline,
-    get_redis_connection_optimized,
 )
 from config import RADIUS_LOGIN_PREFIX
 from schemas import (
@@ -266,16 +264,62 @@ async def find_login_by_session(
         logger.debug(f"Login search took {exec_time:.3f}s")
 
 
-async def find_sessions_by_login(login: str) -> int:
+async def find_sessions_by_login(login: str) -> list[SessionData]:
+    """Найти и вернуть массив всех сессий по логину."""
     redis = await get_redis()
 
     escaped_login = login.replace("-", r"\-")
     query = f"@login:{{{escaped_login}}}"
     index = "idx:radius:session"
 
-    result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-    session_count = 0
-    if result:
-        session_count = result[0]
+    try:
+        result = await execute_redis_command(
+            redis, "FT.SEARCH", index, query, "LIMIT", 0, 10000
+        )
 
-    return session_count
+        if not result or result[0] == 0:
+            return []
+
+        # Отладочный вывод для понимания структуры данных
+        logger.debug(
+            f"FT.SEARCH result structure: {type(result)}, length: {len(result)}"
+        )
+        if len(result) >= 3:
+            logger.debug(f"First document key: {result[1]}")
+            logger.debug(f"First document fields: {result[2]}")
+            logger.debug(f"Fields type: {type(result[2])}")
+            if isinstance(result[2], list) and len(result[2]) >= 2:
+                logger.debug(
+                    f"Field names/values: {result[2][:6]}"
+                )  # Первые 6 элементов
+
+        sessions = []
+
+        # Парсим результат: [count, key1, [field1, value1, ...], key2, [field2, value2, ...]]
+        for i in range(1, len(result), 2):
+            if i + 1 < len(result):
+                fields = result[i + 1]
+
+                json_data = None
+                if isinstance(fields, list):
+                    for j in range(0, len(fields), 2):
+                        if j + 1 < len(fields) and fields[j] in ("$", "json"):
+                            json_data = fields[j + 1]
+                            break
+
+                if json_data:
+                    try:
+                        if isinstance(json_data, bytes):
+                            json_data = json_data.decode("utf-8")
+
+                        session_dict = json.loads(json_data)
+                        sessions.append(SessionData(**session_dict))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse session data: {e}")
+
+        return sessions
+
+    except Exception as e:
+        logger.error(f"Error searching sessions for login '{login}': {e}")
+        return []
+        return []
