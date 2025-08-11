@@ -16,9 +16,9 @@ from metrics import get_metrics_summary, get_prometheus_metrics
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("radius_core.log")],
+    handlers=[logging.StreamHandler(), logging.FileHandler("logs/radius_core.log")],
 )
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
