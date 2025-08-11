@@ -11,3 +11,4 @@ services:
       - ./logs:/app/logs
     labels:
       logging.jobname: radius_core
+

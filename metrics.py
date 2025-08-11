@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class MetricsCollector:
-    """Сборщик метрик для RADIUS сервиса"""
+    """Расширенный сборщик метрик для RADIUS сервиса"""
 
     def __init__(self):
         self.counters = defaultdict(int)
@@ -27,16 +27,37 @@ class MetricsCollector:
         self.prom_counters = {}
         self.prom_gauges = {}
         self.prom_histograms = {}
+        self.start_time = time.time()
 
     def increment_counter(self, name: str, tags: Optional[Dict[str, str]] = None):
         """Увеличить счетчик"""
         if tags is None:
             tags = {}
+
+        # Обработка специального тега для декремента (для активных запросов)
+        is_decrement = tags.pop("_dec", None) == "true"
+
         key = self._make_key(name, tags)
-        self.counters[key] += 1
+        if is_decrement:
+            self.counters[key] = max(0, self.counters[key] - 1)
+        else:
+            self.counters[key] += 1
+
         lbls = tags or {}
-        prom = self._get_or_create_counter(name, sorted(lbls.keys()))
-        prom.labels(**lbls).inc()
+
+        if is_decrement:
+            # Для декремента используем gauge
+            prom = self._get_or_create_gauge(f"{name}_active", sorted(lbls.keys()))
+            prom.labels(**lbls).dec()
+        else:
+            if name.endswith("_active"):
+                # Для активных метрик используем gauge
+                prom = self._get_or_create_gauge(name, sorted(lbls.keys()))
+                prom.labels(**lbls).inc()
+            else:
+                # Для обычных счетчиков
+                prom = self._get_or_create_counter(name, sorted(lbls.keys()))
+                prom.labels(**lbls).inc()
 
     def set_gauge(self, name: str, value: float, tags: Optional[Dict[str, str]] = None):
         """Установить значение gauge"""
@@ -243,3 +264,68 @@ def get_metrics_summary() -> Dict[str, Any]:
 
 # Время запуска для подсчета uptime
 start_time = time.time()
+
+
+def record_radius_request_rate():
+    """Записать метрику скорости обработки RADIUS запросов"""
+    metrics.increment_counter("radius_requests_per_second_total")
+
+
+def record_database_operation(
+    operation: str, table: str, duration: float, status: str = "success"
+):
+    """Записать метрику операции с базой данных"""
+    metrics.increment_counter(
+        "radius_database_operations_total",
+        {"operation": operation, "table": table, "status": status},
+    )
+    metrics.record_timer(
+        "radius_database_operation_duration_seconds",
+        duration,
+        {"operation": operation, "table": table},
+    )
+
+
+def record_session_lifecycle(event: str, auth_type: str = "UNKNOWN"):
+    """Записать событие жизненного цикла сессии"""
+    metrics.increment_counter(
+        "radius_session_lifecycle_total", {"event": event, "auth_type": auth_type}
+    )
+
+
+def record_traffic_volume(direction: str, bytes_count: int, auth_type: str = "UNKNOWN"):
+    """Записать объем трафика"""
+    metrics.record_histogram(
+        "radius_traffic_bytes",
+        bytes_count,
+        {"direction": direction, "auth_type": auth_type},
+    )
+
+
+def record_connection_pool_usage(
+    service: str, active: int, max_connections: int, waiting: int = 0
+):
+    """Записать использование пула соединений"""
+    metrics.set_gauge(f"{service}_pool_active_connections", active)
+    metrics.set_gauge(f"{service}_pool_max_connections", max_connections)
+    if waiting > 0:
+        metrics.set_gauge(f"{service}_pool_waiting_tasks", waiting)
+
+
+def record_cache_operation(operation: str, result: str, duration: float):
+    """Записать операцию с кешем"""
+    metrics.increment_counter(
+        "radius_cache_operations_total", {"operation": operation, "result": result}
+    )
+    metrics.record_timer(
+        "radius_cache_operation_duration_seconds", duration, {"operation": operation}
+    )
+
+
+def record_business_metric(
+    metric_name: str, value: float, tags: Optional[Dict[str, str]] = None
+):
+    """Записать бизнес-метрику"""
+    if tags is None:
+        tags = {}
+    metrics.record_histogram(f"radius_business_{metric_name}", value, tags)

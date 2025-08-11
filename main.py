@@ -13,6 +13,7 @@ from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary, get_prometheus_metrics
+from middleware import MetricsMiddleware, ResourceMetricsMiddleware
 
 # Настройка логирования
 logging.basicConfig(
@@ -59,6 +60,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(ResourceMetricsMiddleware)
+app.add_middleware(MetricsMiddleware)
 
 # Добавляем CORS middleware
 app.add_middleware(
@@ -137,7 +141,9 @@ async def do_acct(data: AccountingData):
     try:
         return await process_accounting(data)
     except HTTPException as http_exc:
-        logger.error(f"HTTP error processing accounting request: {http_exc}", exc_info=True)
+        logger.error(
+            f"HTTP error processing accounting request: {http_exc}", exc_info=True
+        )
         raise
     except Exception as e:
         logger.error(f"Error processing accounting request: {e}", exc_info=True)
