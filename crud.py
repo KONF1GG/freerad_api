@@ -10,6 +10,7 @@ from redis_client import (
     execute_redis_command,
     execute_redis_pipeline,
 )
+from config import REDIS_SEARCH_TIMEOUT
 from config import RADIUS_LOGIN_PREFIX
 from schemas import (
     AccountingData,
@@ -131,7 +132,9 @@ async def search_redis(
     """
     try:
         if key_type == "FT.SEARCH":
-            result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+            result = await execute_redis_command(
+                redis, "FT.SEARCH", index, query, timeout=REDIS_SEARCH_TIMEOUT
+            )
             if not result or result[0] == 0:
                 logger.debug(f"No results for {key_type} query: {query}")
                 return None
@@ -143,7 +146,9 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
-            result = await execute_redis_command(redis, "JSON.GET", redis_key)
+            result = await execute_redis_command(
+                redis, "JSON.GET", redis_key, timeout=REDIS_SEARCH_TIMEOUT
+            )
             if not result:
                 logger.debug(f"No data found for key: {redis_key}")
                 return None
@@ -274,7 +279,14 @@ async def find_sessions_by_login(login: str) -> list[SessionData]:
 
     try:
         result = await execute_redis_command(
-            redis, "FT.SEARCH", index, query, "LIMIT", 0, 10000
+            redis,
+            "FT.SEARCH",
+            index,
+            query,
+            "LIMIT",
+            0,
+            10000,
+            timeout=REDIS_SEARCH_TIMEOUT,
         )
 
         if not result or result[0] == 0:

@@ -2,6 +2,8 @@ import uvicorn
 import uvloop
 import asyncio
 import logging
+from logging.handlers import QueueHandler, QueueListener
+from queue import SimpleQueue
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,12 +17,17 @@ from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary, get_prometheus_metrics
 from middleware import MetricsMiddleware, ResourceMetricsMiddleware
 
-# Настройка логирования для высокой нагрузки
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],  # Только StreamHandler для производительности
+# Неблокирующее логирование через очередь (минимизирует блокировки event loop)
+_log_queue = SimpleQueue()
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.handlers = [QueueHandler(_log_queue)]
+_log_listener = QueueListener(_log_queue, _stream_handler)
+_log_listener.start()
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
 logging.getLogger("aiormq").setLevel(logging.INFO)
@@ -52,6 +59,10 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Radius Core service...")
     await close_redis()
     await close_rabbitmq()
+    try:
+        _log_listener.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -165,7 +176,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,
         access_log=True,
         log_level="debug",
         workers=2,

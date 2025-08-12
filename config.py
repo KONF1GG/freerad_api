@@ -14,10 +14,13 @@ AMQP_URL: str = os.getenv("AMQP_URL", "")
 AMQP_EXCHANGE: str = os.getenv("AMQP_EXCHANGE", "sessions_traffic_exchange")
 AMQP_SESSION_QUEUE: str = os.getenv("AMQP_SESSION_QUEUE", "session_queue")
 AMQP_TRAFFIC_QUEUE: str = os.getenv("AMQP_TRAFFIC_QUEUE", "traffic_queue")
+AMQP_PUBLISH_TIMEOUT: float = float(os.getenv("AMQP_PUBLISH_TIMEOUT", "0.2"))
+AMQP_CONNECT_TIMEOUT: float = float(os.getenv("AMQP_CONNECT_TIMEOUT", "1.0"))
 
 RADIUS_SESSION_PREFIX: str = "radius:session:"
 RADIUS_LOGIN_PREFIX: str = "login:"
 RADIUS_INDEX_NAME: str = "idx:radius:login"
+REDIS_SEARCH_TIMEOUT: float = float(os.getenv("REDIS_SEARCH_TIMEOUT", "0.2"))
 
 SESSION_TEMPLATE = {
     "login": "",

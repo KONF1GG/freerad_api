@@ -4,7 +4,15 @@ import asyncio
 import logging
 from typing import Optional
 from aio_pika import DeliveryMode, ExchangeType
-from config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_QUEUE
+from config import (
+    AMQP_URL,
+    AMQP_EXCHANGE,
+    AMQP_SESSION_QUEUE,
+    AMQP_TRAFFIC_QUEUE,
+    AMQP_PUBLISH_TIMEOUT,
+    AMQP_CONNECT_TIMEOUT,
+)
+import metrics
 from schemas import RABBIT_MODELS
 
 logger = logging.getLogger(__name__)
@@ -24,10 +32,13 @@ class RabbitMQClient:
                 if self._channel is None or self._channel.is_closed:
                     try:
                         # Создаем робастное соединение
-                        self._connection = await aio_pika.connect_robust(
-                            AMQP_URL,
-                            heartbeat=30,
-                            blocked_connection_timeout=300,
+                        self._connection = await asyncio.wait_for(
+                            aio_pika.connect_robust(
+                                AMQP_URL,
+                                heartbeat=30,
+                                blocked_connection_timeout=300,
+                            ),
+                            timeout=AMQP_CONNECT_TIMEOUT,
                         )
                         self._channel = await self._connection.channel()
 
@@ -81,9 +92,11 @@ class RabbitMQClient:
         self, routing_key: str, message: RABBIT_MODELS, persistent: bool = True
     ) -> bool:
         """Отправить сообщение в RabbitMQ"""
+        start = asyncio.get_event_loop().time()
         try:
             if not self._exchange:
                 logger.error("Exchange not initialized")
+                metrics.record_external_call("rabbitmq", "publish", "no_exchange", 0.0)
                 return False
 
             # Подготавливаем сообщение с алиасами (дефисами)
@@ -102,15 +115,30 @@ class RabbitMQClient:
             )
 
             # Отправляем сообщение
-            await self._exchange.publish(
-                message_obj,
-                routing_key=routing_key,
+            # Публикация с таймаутом, чтобы не зависать на перегруженном брокере
+            await asyncio.wait_for(
+                self._exchange.publish(
+                    message_obj,
+                    routing_key=routing_key,
+                ),
+                timeout=AMQP_PUBLISH_TIMEOUT,
             )
 
+            duration = asyncio.get_event_loop().time() - start
+            metrics.record_external_call("rabbitmq", "publish", "success", duration)
             logger.debug(f"Message sent to {routing_key}: {len(body)} bytes")
             return True
 
+        except asyncio.TimeoutError:
+            duration = asyncio.get_event_loop().time() - start
+            metrics.record_external_call("rabbitmq", "publish", "timeout", duration)
+            logger.error(
+                f"Publish timeout after {AMQP_PUBLISH_TIMEOUT}s for routing_key={routing_key}"
+            )
+            return False
         except Exception as e:
+            duration = asyncio.get_event_loop().time() - start
+            metrics.record_external_call("rabbitmq", "publish", "error", duration)
             logger.error(f"Failed to send message to {routing_key}: {e}")
             return False
 
