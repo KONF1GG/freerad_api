@@ -1,3 +1,4 @@
+import os
 import uvicorn
 import uvloop
 import asyncio
@@ -20,14 +21,20 @@ from middleware.base import EnhancedMetricsMiddleware
 
 # Неблокирующее логирование через очередь (минимизирует блокировки event loop)
 _log_queue = SimpleQueue()
-_stream_handler = logging.StreamHandler()
-_stream_handler.setFormatter(
+
+# File handler for logging
+import os
+
+os.makedirs("/var/log/radius_core", exist_ok=True)
+_file_handler = logging.FileHandler("/var/log/radius_core/radius_core.log")
+_file_handler.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )
+
 _root_logger = logging.getLogger()
 _root_logger.setLevel(logging.INFO)
 _root_logger.handlers = [QueueHandler(_log_queue)]
-_log_listener = QueueListener(_log_queue, _stream_handler)
+_log_listener = QueueListener(_log_queue, _file_handler)
 _log_listener.start()
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
@@ -73,7 +80,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(EnhancedMetricsMiddleware) 
+app.add_middleware(EnhancedMetricsMiddleware)
 
 # Добавляем CORS middleware
 app.add_middleware(

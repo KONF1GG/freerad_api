@@ -66,8 +66,12 @@ class MetricsCollector:
         key = self._make_key(name, tags)
         self.gauges[key] = value
         lbls = tags or {}
-        prom = self._get_or_create_gauge(name, sorted(lbls.keys()))
-        prom.labels(**lbls).set(value)
+        label_names = sorted(lbls.keys())
+        prom = self._get_or_create_gauge(name, label_names)
+        if label_names:
+            prom.labels(**lbls).set(value)
+        else:
+            prom.set(value)
 
     def record_timer(
         self, name: str, duration: float, tags: Optional[Dict[str, str]] = None
