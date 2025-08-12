@@ -628,8 +628,12 @@ async def ch_save_traffic(
 
         # Добавляем трафик (дельта или полный) с алиасами
         negative_deltas = []
+        total_traffic = 0
+        significant_negative_deltas = []
+
         for field, alias in traffic_fields:
             new_val = getattr(session_new, field, 0) or 0
+            total_traffic += new_val
 
             if session_stored:
                 stored_val = getattr(session_stored, field, 0) or 0
@@ -638,15 +642,21 @@ async def ch_save_traffic(
                     negative_deltas.append(
                         f"{field}: {stored_val} -> {new_val}, Δ={delta}"
                     )
+                    # Фильтр: логируем только если дельта больше 10% от общего трафика
+                    if abs(delta) > total_traffic * 0.1:
+                        significant_negative_deltas.append(
+                            f"{field}: {stored_val} -> {new_val}, Δ={delta}"
+                        )
                     delta = 0
                 traffic_data[alias] = delta
             else:
                 traffic_data[alias] = new_val
 
-        if negative_deltas:
-            logger.error(
-                f"Отрицательная дельта трафика для {session_new.Acct_Unique_Session_Id}: "
-                f"; ".join(negative_deltas)
+        # Логируем только значимые отрицательные дельты с warning уровнем
+        if significant_negative_deltas:
+            logger.warning(
+                f"Значимая отрицательная дельта трафика для {session_new.Acct_Unique_Session_Id}: "
+                f"; ".join(significant_negative_deltas)
             )
 
         traffic_model = TrafficData(**traffic_data)

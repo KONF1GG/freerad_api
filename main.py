@@ -15,11 +15,11 @@ from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary, get_prometheus_metrics
 from middleware import MetricsMiddleware, ResourceMetricsMiddleware
 
-# Настройка логирования
+# Настройка логирования для высокой нагрузки
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("logs/radius_core.log")],
+    handlers=[logging.StreamHandler()],  # Только StreamHandler для производительности
 )
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
@@ -168,4 +168,5 @@ if __name__ == "__main__":
         reload=True,
         access_log=True,
         log_level="debug",
+        workers=2,
     )

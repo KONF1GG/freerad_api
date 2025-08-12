@@ -5,10 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 REDIS_URL: str = os.getenv("REDIS_URL", "")
-REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50"))
-REDIS_CONCURRENCY: int = int(
-    os.getenv("REDIS_CONCURRENCY", str(max(1, int(REDIS_POOL_SIZE * 0.8))))
-)
+REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "75"))
+REDIS_CONCURRENCY: int = int(os.getenv("REDIS_CONCURRENCY", "25"))
 
 REDIS_COMMAND_TIMEOUT: float = float(os.getenv("REDIS_COMMAND_TIMEOUT", "3.0"))
 REDIS_WARNING_THRESHOLD: int = int(os.getenv("REDIS_WARNING_THRESHOLD", "20"))

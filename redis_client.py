@@ -8,7 +8,6 @@ from config import (
     REDIS_POOL_SIZE,
     REDIS_CONCURRENCY,
     REDIS_COMMAND_TIMEOUT,
-    REDIS_WARNING_THRESHOLD,
 )
 
 from redis.retry import Retry
@@ -23,8 +22,12 @@ class RedisClient:
         self._pool: Optional[redis.ConnectionPool] = None
         self._redis: Optional[redis.Redis] = None
         self._lock = asyncio.Lock()
-        # Семафор для ограничения одновременных операций
-        self._semaphore = asyncio.Semaphore(REDIS_CONCURRENCY)
+
+    async def get_semaphore(self) -> asyncio.Semaphore:
+        """Получить семафор, создать если нужно"""
+        if not hasattr(self, "_semaphore"):
+            self._semaphore = asyncio.Semaphore(REDIS_CONCURRENCY)
+        return self._semaphore
 
     async def get_client(self) -> redis.Redis:
         """Получить Redis клиент с пулом соединений"""
@@ -89,7 +92,8 @@ _redis_client = RedisClient()
 @asynccontextmanager
 async def get_redis_connection():
     """Контекстный менеджер для получения Redis соединения с ограничением одновременных операций"""
-    async with _redis_client._semaphore:
+    semaphore = await _redis_client.get_semaphore()
+    async with semaphore:
         redis_client = await _redis_client.get_client()
         try:
             yield redis_client
@@ -111,24 +115,21 @@ async def get_redis_connection_optimized():
 
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
-    # Логируем количество задач, ожидающих семафор
-    waiting_tasks = (
-        len(_redis_client._semaphore._waiters)
-        if _redis_client._semaphore._waiters
-        else 0
-    )
-    # Only warn if waiting tasks exceed the new threshold
-    if waiting_tasks > REDIS_WARNING_THRESHOLD:
+    semaphore = await _redis_client.get_semaphore()
+
+    # Логируем только доступные разрешения семафора
+    available = semaphore._value
+    max_conns = _redis_client._pool.max_connections if _redis_client._pool else 0
+
+    # Только предупреждаем если доступных разрешений мало
+    if available < 5:
         logger.warning(
-            f"High Redis connection contention: {waiting_tasks} tasks waiting"
+            f"Low Redis connection availability: {available} permits remaining"
         )
 
-    # Update metrics gauges
-    available = _redis_client._semaphore._value
-    max_conns = _redis_client._pool.max_connections if _redis_client._pool else 0
+    # Обновляем только важные метрики
     try:
         metrics.metrics.set_gauge("radius_redis_available_permits", float(available))
-        metrics.metrics.set_gauge("radius_redis_waiting_tasks", float(waiting_tasks))
         metrics.metrics.set_gauge("radius_redis_max_connections", float(max_conns))
     except Exception:
         pass
@@ -150,8 +151,9 @@ async def execute_redis_command(redis_client, *args, timeout: float | None = Non
     """Выполнить команду Redis с тайм-аутом"""
     start = asyncio.get_event_loop().time()
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
+    semaphore = await _redis_client.get_semaphore()
     try:
-        async with _redis_client._semaphore:
+        async with semaphore:
             result = await asyncio.wait_for(
                 redis_client.execute_command(*args), timeout=eff_timeout
             )
@@ -174,9 +176,10 @@ async def execute_redis_pipeline(commands: list, timeout: float | None = None):
     """Выполнить пакет команд Redis через pipeline для повышения производительности"""
     start = asyncio.get_event_loop().time()
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
+    semaphore = await _redis_client.get_semaphore()
 
     try:
-        async with _redis_client._semaphore:
+        async with semaphore:
             redis_client = await _redis_client.get_client()
             pipe = redis_client.pipeline()
 
