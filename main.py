@@ -15,7 +15,8 @@ from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 from metrics import get_metrics_summary, get_prometheus_metrics
-from middleware import MetricsMiddleware, ResourceMetricsMiddleware
+
+from middleware.base import EnhancedMetricsMiddleware
 
 # Неблокирующее логирование через очередь (минимизирует блокировки event loop)
 _log_queue = SimpleQueue()
@@ -72,8 +73,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(ResourceMetricsMiddleware)
-app.add_middleware(MetricsMiddleware)
+app.add_middleware(EnhancedMetricsMiddleware) 
 
 # Добавляем CORS middleware
 app.add_middleware(
