@@ -23,7 +23,6 @@ from middleware.base import EnhancedMetricsMiddleware
 _log_queue = SimpleQueue()
 
 # File handler for logging
-import os
 
 os.makedirs("/var/log/radius_core", exist_ok=True)
 _file_handler = logging.FileHandler("/var/log/radius_core/radius_core.log")
@@ -38,7 +37,7 @@ _log_listener = QueueListener(_log_queue, _file_handler)
 _log_listener.start()
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
-logging.getLogger("aiormq").setLevel(logging.INFO)
+logging.getLogger("aiormq").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 

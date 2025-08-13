@@ -26,7 +26,6 @@ from config import (
     RADIUS_SESSION_PREFIX,
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
-    AMQP_PUBLISH_TIMEOUT,
 )
 import metrics
 
@@ -582,11 +581,8 @@ async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> 
             logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
             session_data.Acct_Stop_Time = None
 
-        # Ограничиваем время публикации, чтобы не блокировать обработку
-        result = await asyncio.wait_for(
-            rmq_send_message(AMQP_SESSION_QUEUE, session_data),
-            timeout=AMQP_PUBLISH_TIMEOUT,
-        )
+        # Публикуем без внешнего таймаута (внутри клиента есть собственный таймаут)
+        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
         if result:
             logger.info(
                 f"Сессия отправлена в очередь session_queue: {session_data.Acct_Unique_Session_Id}"
@@ -666,12 +662,8 @@ async def ch_save_traffic(
 
         traffic_model = TrafficData(**traffic_data)
 
-        # Отправляем в RabbitMQ
-        # Ограничиваем время публикации, чтобы не блокировать обработку
-        result = await asyncio.wait_for(
-            rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model),
-            timeout=AMQP_PUBLISH_TIMEOUT,
-        )
+        # Отправляем в RabbitMQ без внешнего таймаута (внутри клиента есть собственный таймаут)
+        result = await rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model)
 
         if result:
             action = "дельта" if session_stored else "полный"

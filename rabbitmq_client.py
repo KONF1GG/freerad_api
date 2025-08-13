@@ -4,12 +4,14 @@ import asyncio
 import logging
 from typing import Optional
 from aio_pika import DeliveryMode, ExchangeType
+from aio_pika.exceptions import ChannelClosed as AioPikaChannelClosed
+from aiormq.exceptions import ChannelClosed as AiormqChannelClosed
+from aio_pika.exceptions import AMQPException
 from config import (
     AMQP_URL,
     AMQP_EXCHANGE,
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
-    AMQP_PUBLISH_TIMEOUT,
     AMQP_CONNECT_TIMEOUT,
 )
 import metrics
@@ -26,40 +28,76 @@ class RabbitMQClient:
         self._lock = asyncio.Lock()
 
     async def get_channel(self) -> aio_pika.abc.AbstractChannel:
-        """Получить канал RabbitMQ с автоматической настройкой"""
-        if self._channel is None or self._channel.is_closed:
-            async with self._lock:
+        """Получить активный канал (с автонастройкой/переподключением)."""
+        await self.ensure_connected()
+        # На этом этапе канал гарантированно инициализирован
+        return self._channel  # type: ignore[return-value]
+
+    async def ensure_connected(self) -> None:
+        """Гарантировать активное соединение, канал и exchange.
+
+        Потокобезопасно восстанавливает соединение/канал/объекты при сбоях.
+        """
+        if (
+            self._connection is not None
+            and not self._connection.is_closed
+            and self._channel is not None
+            and not self._channel.is_closed
+            and self._exchange is not None
+        ):
+            return
+
+        async with self._lock:
+            # Повторная проверка внутри критической секции
+            if (
+                self._connection is not None
+                and not self._connection.is_closed
+                and self._channel is not None
+                and not self._channel.is_closed
+                and self._exchange is not None
+            ):
+                return
+
+            try:
+                # Создаем/восстанавливаем робастное соединение
+                if self._connection is None or self._connection.is_closed:
+                    self._connection = await asyncio.wait_for(
+                        aio_pika.connect_robust(
+                            AMQP_URL,
+                            heartbeat=30,
+                            blocked_connection_timeout=300,
+                        ),
+                        timeout=AMQP_CONNECT_TIMEOUT,
+                    )
+
+                # Создаем/восстанавливаем канал с подтверждениями публикаций
                 if self._channel is None or self._channel.is_closed:
-                    try:
-                        # Создаем робастное соединение
-                        self._connection = await asyncio.wait_for(
-                            aio_pika.connect_robust(
-                                AMQP_URL,
-                                heartbeat=30,
-                                blocked_connection_timeout=300,
-                            ),
-                            timeout=AMQP_CONNECT_TIMEOUT,
-                        )
-                        self._channel = await self._connection.channel()
+                    self._channel = await self._connection.channel(
+                        publisher_confirms=True
+                    )
+                    await self._channel.set_qos(prefetch_count=100)
 
-                        # Настраиваем QoS
-                        await self._channel.set_qos(prefetch_count=100)
+                # Создаем/восстанавливаем exchange и очереди (идемпотентно)
+                self._exchange = await self._channel.declare_exchange(
+                    name=AMQP_EXCHANGE,
+                    type=ExchangeType.DIRECT,
+                    durable=True,
+                )
 
-                        # Создаем exchange
-                        self._exchange = await self._channel.declare_exchange(
-                            name=AMQP_EXCHANGE,
-                            type=ExchangeType.DIRECT,
-                            durable=True,
-                        )
+                await self._setup_queues()
 
-                        # Создаем очереди
-                        await self._setup_queues()
-
-                        logger.info("RabbitMQ connection established successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to connect to RabbitMQ: {e}")
-                        raise
-        return self._channel
+                logger.info("RabbitMQ connection/channel are ready")
+            except Exception as e:
+                # Сбрасываем состояние, чтобы попытаться заново при следующем вызове
+                logger.error(f"Failed to (re)connect to RabbitMQ: {e}")
+                self._exchange = None
+                self._channel = None
+                try:
+                    if self._connection and not self._connection.is_closed:
+                        await self._connection.close()
+                finally:
+                    self._connection = None
+                raise
 
     async def _setup_queues(self):
         """Настройка очередей"""
@@ -93,54 +131,85 @@ class RabbitMQClient:
     ) -> bool:
         """Отправить сообщение в RabbitMQ"""
         start = asyncio.get_event_loop().time()
-        try:
-            if not self._exchange:
-                logger.error("Exchange not initialized")
-                metrics.record_external_call("rabbitmq", "publish", "no_exchange", 0.0)
-                return False
+        # Подготавливаем сообщение с алиасами (дефисами)
+        body = json.dumps(
+            message.model_dump(by_alias=True), ensure_ascii=False, default=str
+        ).encode("utf-8")
 
-            # Подготавливаем сообщение с алиасами (дефисами)
-            body = json.dumps(
-                message.model_dump(by_alias=True), ensure_ascii=False, default=str
-            ).encode("utf-8")
+        message_obj = aio_pika.Message(
+            body=body,
+            delivery_mode=DeliveryMode.PERSISTENT
+            if persistent
+            else DeliveryMode.NOT_PERSISTENT,
+            content_type="application/json",
+            content_encoding="utf-8",
+            timestamp=None,
+        )
 
-            message_obj = aio_pika.Message(
-                body=body,
-                delivery_mode=DeliveryMode.PERSISTENT
-                if persistent
-                else DeliveryMode.NOT_PERSISTENT,
-                content_type="application/json",
-                content_encoding="utf-8",
-                timestamp=None,
-            )
+        attempts = 2  # первая попытка + одна переподключение/повтор
+        last_error: Optional[Exception] = None
 
-            # Отправляем сообщение
-            # Публикация с таймаутом, чтобы не зависать на перегруженном брокере
-            await asyncio.wait_for(
-                self._exchange.publish(
+        for attempt in range(1, attempts + 1):
+            try:
+                # Гарантируем активное подключение и объекты
+                await self.ensure_connected()
+                if not self._exchange:
+                    # should not happen, но на всякий случай
+                    raise RuntimeError("Exchange is not initialized")
+
+                # Публикация без дополнительного таймаута (используем robust connection)
+                await self._exchange.publish(
                     message_obj,
                     routing_key=routing_key,
-                ),
-                timeout=AMQP_PUBLISH_TIMEOUT,
-            )
+                )
 
-            duration = asyncio.get_event_loop().time() - start
-            metrics.record_external_call("rabbitmq", "publish", "success", duration)
-            logger.debug(f"Message sent to {routing_key}: {len(body)} bytes")
-            return True
+                duration = asyncio.get_event_loop().time() - start
+                metrics.record_external_call("rabbitmq", "publish", "success", duration)
+                logger.debug(
+                    f"Message sent to {routing_key}: {len(body)} bytes (attempt {attempt})"
+                )
+                return True
 
-        except asyncio.TimeoutError:
-            duration = asyncio.get_event_loop().time() - start
-            metrics.record_external_call("rabbitmq", "publish", "timeout", duration)
-            logger.error(
-                f"Publish timeout after {AMQP_PUBLISH_TIMEOUT}s for routing_key={routing_key}"
-            )
-            return False
-        except Exception as e:
-            duration = asyncio.get_event_loop().time() - start
-            metrics.record_external_call("rabbitmq", "publish", "error", duration)
-            logger.error(f"Failed to send message to {routing_key}: {e}")
-            return False
+            except (AioPikaChannelClosed, AiormqChannelClosed, AMQPException) as e:
+                # Канал/соединение закрыт — пробуем восстановиться один раз
+                last_error = e
+                logger.warning(
+                    f"RabbitMQ channel/connection issue on publish (attempt {attempt}): {e}. Reconnecting..."
+                )
+                # Сбросим объекты и попробуем переподключиться на следующей итерации
+                await self._safe_reset()
+                # Небольшая пауза перед повтором
+                await asyncio.sleep(0.1)
+                continue
+            except Exception as e:
+                last_error = e
+                break
+
+        # Если дошли сюда — публикация не удалась
+        duration = asyncio.get_event_loop().time() - start
+        metrics.record_external_call("rabbitmq", "publish", "error", duration)
+        logger.error(
+            f"Failed to send message to {routing_key}: {last_error!r} after {attempts} attempts"
+        )
+        return False
+
+    async def _safe_reset(self) -> None:
+        """Осторожно закрыть и обнулить объекты подключения."""
+        try:
+            if self._channel and not self._channel.is_closed:
+                await self._channel.close()
+        except Exception:
+            pass
+        finally:
+            self._channel = None
+        try:
+            if self._connection and not self._connection.is_closed:
+                await self._connection.close()
+        except Exception:
+            pass
+        finally:
+            self._connection = None
+            self._exchange = None
 
     async def close(self):
         """Закрыть соединение с RabbitMQ"""
