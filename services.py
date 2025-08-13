@@ -228,10 +228,15 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             session_new.Acct_Session_Time = 0
             session_new.Acct_Stop_Time = None
 
-            await asyncio.gather(
-                save_session_to_redis(session_new, redis_key),
-                ch_save_session(session_new),
-            )
+            try:
+                await asyncio.gather(
+                    save_session_to_redis(session_new, redis_key),
+                    ch_save_session(session_new),
+                    return_exceptions=True,
+                )
+            except Exception as e:
+                logger.error(f"Error in asyncio.gather for Start: {e}", exc_info=True)
+                # Не прерываем обработку, продолжаем
 
         # Если пакет типа Interim-Update
         elif packet_type == "Interim-Update":
@@ -254,7 +259,15 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             if not is_service_session:
                 tasks.append(save_session_to_redis(session_new, redis_key))
             tasks.append(ch_save_session(session_new))
-            await asyncio.gather(*tasks)
+
+            # Выполняем задачи с обработкой ошибок
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as e:
+                logger.error(
+                    f"Error in asyncio.gather for Interim-Update: {e}", exc_info=True
+                )
+                # Не прерываем обработку, продолжаем
 
         # Если пакет типа Stop, завершаем сессию
         elif packet_type == "Stop":
@@ -269,16 +282,20 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             else:
                 session_new.Acct_Start_Time = session_stored.Acct_Start_Time
 
-            await asyncio.gather(
-                ch_save_session(session_new, stoptime=True),
-                ch_save_traffic(
-                    session_new,
-                    session_stored if session_stored else None,
-                ),
-                delete_session_from_redis(redis_key)
-                if session_stored
-                else asyncio.sleep(0),
-            )
+            try:
+                await asyncio.gather(
+                    ch_save_session(session_new, stoptime=True),
+                    ch_save_traffic(
+                        session_new,
+                        session_stored if session_stored else None,
+                    ),
+                    delete_session_from_redis(redis_key)
+                    if session_stored
+                    else asyncio.sleep(0),
+                    return_exceptions=True,
+                )
+            except Exception as e:
+                logger.error(f"Error in asyncio.gather for Stop: {e}", exc_info=True)
 
         else:
             logger.error(f"Неизвестный тип пакета: {packet_type}")
@@ -582,7 +599,22 @@ async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> 
             session_data.Acct_Stop_Time = None
 
         # Публикуем без внешнего таймаута (внутри клиента есть собственный таймаут)
-        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
+        # Но добавим разумный общий таймаут на случай зависания
+        try:
+            result = await asyncio.wait_for(
+                rmq_send_message(AMQP_SESSION_QUEUE, session_data),
+                timeout=5.0,  # 5 секунд максимум
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"RabbitMQ timeout sending session {session_data.Acct_Unique_Session_Id}"
+            )
+            result = False
+        except Exception as e:
+            logger.error(
+                f"RabbitMQ error sending session {session_data.Acct_Unique_Session_Id}: {e}"
+            )
+            result = False
         if result:
             logger.info(
                 f"Сессия отправлена в очередь session_queue: {session_data.Acct_Unique_Session_Id}"
@@ -663,7 +695,22 @@ async def ch_save_traffic(
         traffic_model = TrafficData(**traffic_data)
 
         # Отправляем в RabbitMQ без внешнего таймаута (внутри клиента есть собственный таймаут)
-        result = await rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model)
+        # Но добавим разумный общий таймаут на случай зависания
+        try:
+            result = await asyncio.wait_for(
+                rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model),
+                timeout=5.0,  # 5 секунд максимум
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"RabbitMQ timeout sending traffic for {session_new.Acct_Unique_Session_Id}"
+            )
+            result = False
+        except Exception as e:
+            logger.error(
+                f"RabbitMQ error sending traffic for {session_new.Acct_Unique_Session_Id}: {e}"
+            )
+            result = False
 
         if result:
             action = "дельта" if session_stored else "полный"
