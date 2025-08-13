@@ -104,26 +104,42 @@ class RabbitMQClient:
         if not self._channel or not self._exchange:
             return
 
-        # Очередь сессий
-        session_queue = await self._channel.declare_queue(
-            name=AMQP_SESSION_QUEUE,
-            durable=True,
-            arguments={
-                "x-message-ttl": 3600000,  # 1 час
-                "x-max-length": 10000,
-            },
-        )
+        # Очередь сессий - сначала пытаемся подключиться к существующей
+        try:
+            session_queue = await self._channel.declare_queue(
+                name=AMQP_SESSION_QUEUE,
+                durable=True,
+                passive=True,  # Только подключиться к существующей
+            )
+        except Exception:
+            # Если очереди нет, создаем новую с аргументами
+            session_queue = await self._channel.declare_queue(
+                name=AMQP_SESSION_QUEUE,
+                durable=True,
+                arguments={
+                    "x-message-ttl": 3600000,  # 1 час
+                    "x-max-length": 10000,
+                },
+            )
         await session_queue.bind(self._exchange, routing_key=AMQP_SESSION_QUEUE)
 
-        # Очередь трафика
-        traffic_queue = await self._channel.declare_queue(
-            name=AMQP_TRAFFIC_QUEUE,
-            durable=True,
-            arguments={
-                "x-message-ttl": 1800000,  # 30 минут
-                "x-max-length": 50000,
-            },
-        )
+        # Очередь трафика - сначала пытаемся подключиться к существующей
+        try:
+            traffic_queue = await self._channel.declare_queue(
+                name=AMQP_TRAFFIC_QUEUE,
+                durable=True,
+                passive=True,  # Только подключиться к существующей
+            )
+        except Exception:
+            # Если очереди нет, создаем новую с аргументами
+            traffic_queue = await self._channel.declare_queue(
+                name=AMQP_TRAFFIC_QUEUE,
+                durable=True,
+                arguments={
+                    "x-message-ttl": 1800000,  # 30 минут
+                    "x-max-length": 50000,
+                },
+            )
         await traffic_queue.bind(self._exchange, routing_key=AMQP_TRAFFIC_QUEUE)
 
     async def send_message(
