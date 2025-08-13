@@ -22,32 +22,29 @@ log_file = os.path.join(log_dir, "radius_log.log")
 # Создаем форматтер для логов
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-# Настройка логгера для приложения (подробные логи в файл)
-app_logger = logging.getLogger(__name__)
-app_logger.setLevel(logging.INFO)
+# Настройка корневого логгера для всего приложения
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Удаляем все существующие хендлеры
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
 
 # Файловый хендлер для подробных логов приложения
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(formatter)
-app_logger.addHandler(file_handler)
+file_handler.setLevel(logging.INFO)
 
-# Настройка корневого логгера (только для stdout с минимальными логами)
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.WARNING)
-
-# Stream handler только для критических ошибок
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.ERROR)
-console_handler.setFormatter(formatter)
-root_logger.addHandler(console_handler)
+# Добавляем файловый хендлер к корневому логгеру
+root_logger.addHandler(file_handler)
 
 # Отключаем логи библиотек в файле, но разрешаем критические ошибки
 logging.getLogger("aio_pika").setLevel(logging.ERROR)
 logging.getLogger("aiormq").setLevel(logging.ERROR)
-logging.getLogger("uvicorn.access").setLevel(logging.INFO)  # HTTP логи в stdout
-logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+logging.getLogger("uvicorn").setLevel(logging.ERROR)  # Отключаем uvicorn логи в файле
 
-logger = app_logger
+# Получаем логгер для этого модуля
+logger = logging.getLogger(__name__)
 
 # Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -141,15 +138,24 @@ async def root():
 @app.post("/acct/", response_model=AccountingResponse)
 async def do_acct(data: AccountingData):
     """Обработка RADIUS Accounting запросов"""
+    logger.info(f"Processing accounting request for session: {data.Acct_Session_Id}")
     try:
-        return await process_accounting(data)
+        result = await process_accounting(data)
+        logger.info(
+            f"Accounting request processed successfully for session: {data.Acct_Session_Id}"
+        )
+        return result
     except HTTPException as http_exc:
         logger.error(
-            f"HTTP error processing accounting request: {http_exc}", exc_info=True
+            f"HTTP error processing accounting request for session {data.Acct_Session_Id}: {http_exc}",
+            exc_info=True,
         )
         raise
     except Exception as e:
-        logger.error(f"Error processing accounting request: {e}", exc_info=True)
+        logger.error(
+            f"Error processing accounting request for session {data.Acct_Session_Id}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -157,10 +163,16 @@ async def do_acct(data: AccountingData):
 @app.post("/authorize/", response_model=Dict)
 async def do_auth(data: AuthRequest):
     """Авторизация пользователя"""
+    logger.info(f"Processing auth request for user: {data.User_Name}")
     try:
-        return await auth(data)
+        result = await auth(data)
+        logger.info(f"Auth request processed successfully for user: {data.User_Name}")
+        return result
     except Exception as e:
-        logger.error(f"Error processing authentication request: {e}", exc_info=True)
+        logger.error(
+            f"Error processing authentication request for user {data.User_Name}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
