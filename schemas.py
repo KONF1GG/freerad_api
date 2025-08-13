@@ -134,7 +134,7 @@ class SessionData(BaseAccountingData):
     auth_type: Optional[str] = "UNKNOWN"
     onu_mac: Optional[str] = None
     contract: Optional[str] = ""
-    service: Optional[str] = ""
+    ERX_Service_Session: Optional[str] = Field("", alias="ERX-Service-Session")
 
     GMT: Optional[int] = 5
     Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
@@ -238,8 +238,10 @@ class TrafficData(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
+
 class CoaRequest(BaseModel):
     """Модель запроса CoA"""
+
     login: str
 
 
