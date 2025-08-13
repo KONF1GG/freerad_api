@@ -14,20 +14,40 @@ from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 import os
 
 log_dir = "/var/log/radius_core"
+
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, "radius_log.log")
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
-)
+# Создаем форматтер для логов
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-logging.getLogger("aio_pika").setLevel(logging.INFO)
-logging.getLogger("aiormq").setLevel(logging.INFO)
+# Настройка логгера для приложения (подробные логи в файл)
+app_logger = logging.getLogger(__name__)
+app_logger.setLevel(logging.INFO)
 
-logger = logging.getLogger(__name__)
+# Файловый хендлер для подробных логов приложения
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(formatter)
+app_logger.addHandler(file_handler)
+
+# Настройка корневого логгера (только для stdout с минимальными логами)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.WARNING)
+
+# Stream handler только для критических ошибок
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+console_handler.setFormatter(formatter)
+root_logger.addHandler(console_handler)
+
+# Отключаем логи библиотек в файле, но разрешаем критические ошибки
+logging.getLogger("aio_pika").setLevel(logging.ERROR)
+logging.getLogger("aiormq").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)  # HTTP логи в stdout
+logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+
+logger = app_logger
 
 # Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -145,11 +165,45 @@ async def do_auth(data: AuthRequest):
 
 
 if __name__ == "__main__":
+    # Настройка uvicorn для логирования только HTTP запросов в stdout
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
         reload=False,
-        access_log=True,
-        log_level="debug",
+        access_log=True,  # HTTP логи в stdout для docker logs
+        log_level="info",
+        log_config={
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                },
+                "access": {
+                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                },
+            },
+            "handlers": {
+                "default": {
+                    "formatter": "default",
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout",
+                },
+                "access": {
+                    "formatter": "access",
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout",
+                },
+            },
+            "loggers": {
+                "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                "uvicorn.error": {"handlers": ["default"], "level": "INFO"},
+                "uvicorn.access": {
+                    "handlers": ["access"],
+                    "level": "INFO",
+                    "propagate": False,
+                },
+            },
+        },
     )
