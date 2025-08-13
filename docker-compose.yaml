@@ -8,6 +8,6 @@ services:
     env_file:
       - ".env"
     volumes:
-      - /var/log/radius_core/radius_logs.log:radius_log.log
+      - /var/log/radius_core/radius_logs.log:/var/log/radius_core/radius_logs.log
     labels:
       logging.jobname: radius_core
