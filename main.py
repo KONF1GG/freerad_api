@@ -1,17 +1,18 @@
+import os
+import logging
+import asyncio
+from typing import Dict
 import uvicorn
 import uvloop
-import asyncio
-import logging
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from contextlib import asynccontextmanager
+
 from schemas import AccountingData, AccountingResponse, AuthRequest
-from typing import Dict
 from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
-import os
 
 log_dir = "/var/log/radius_core"
 
@@ -19,7 +20,6 @@ os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, "radius_log.log")
 
 # Настройка логирования
-# Создаем форматтер для логов
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 # Настройка корневого логгера для всего приложения
@@ -41,7 +41,7 @@ root_logger.addHandler(file_handler)
 # Отключаем логи библиотек в файле, но разрешаем критические ошибки
 logging.getLogger("aio_pika").setLevel(logging.ERROR)
 logging.getLogger("aiormq").setLevel(logging.ERROR)
-logging.getLogger("uvicorn").setLevel(logging.ERROR)  # Отключаем uvicorn логи в файле
+logging.getLogger("uvicorn").setLevel(logging.ERROR)
 
 # Получаем логгер для этого модуля
 logger = logging.getLogger(__name__)
@@ -177,7 +177,6 @@ async def do_auth(data: AuthRequest):
 
 
 if __name__ == "__main__":
-    # Настройка uvicorn для логирования только HTTP запросов в stdout
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
@@ -185,37 +184,4 @@ if __name__ == "__main__":
         reload=False,
         access_log=True,  # HTTP логи в stdout для docker logs
         log_level="info",
-        log_config={
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "default": {
-                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                },
-                "access": {
-                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                },
-            },
-            "handlers": {
-                "default": {
-                    "formatter": "default",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stdout",
-                },
-                "access": {
-                    "formatter": "access",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stdout",
-                },
-            },
-            "loggers": {
-                "uvicorn": {"handlers": ["default"], "level": "INFO"},
-                "uvicorn.error": {"handlers": ["default"], "level": "INFO"},
-                "uvicorn.access": {
-                    "handlers": ["access"],
-                    "level": "INFO",
-                    "propagate": False,
-                },
-            },
-        },
     )

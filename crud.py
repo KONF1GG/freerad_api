@@ -23,6 +23,33 @@ from utils import is_mac_username, mac_from_hex, mac_from_username, nasportid_pa
 logger = logging.getLogger(__name__)
 
 
+async def get_session_from_redis(redis_key: str) -> Optional[SessionData]:
+    """
+    Получение сессии из Redis и преобразование в модель RedisSessionData.
+    """
+    redis = await get_redis()
+    try:
+        session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
+        if not session_data:
+            logger.debug(f"No session data found for key: {redis_key}")
+            return None
+
+        parsed_data = json.loads(session_data)
+        session = SessionData(**parsed_data)
+        logger.debug(f"Successfully retrieved session for key: {redis_key}")
+        return session
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON for key {redis_key}: {e}")
+        return None
+    except ValidationError as e:
+        logger.error(f"Invalid session data for key {redis_key}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get session from Redis for key {redis_key}: {e}")
+        return None
+
+
 async def enrich_session_with_login(
     session_req: AccountingData, login: Optional[LoginSearchResult]
 ) -> EnrichedSessionData:

@@ -42,7 +42,7 @@ class RabbitMQClient:
                         )
 
                         # Создаем очереди
-                        await self._setup_queues()
+                        # await self._setup_queues()
 
                         logger.info("RabbitMQ connection established successfully")
                     except Exception as e:

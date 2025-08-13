@@ -3,7 +3,6 @@ from dateutil import parser
 import re
 import logging
 from typing import Dict, Any, Tuple, Union
-from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 

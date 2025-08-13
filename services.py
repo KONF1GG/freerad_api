@@ -1,24 +1,22 @@
 import asyncio
 import re
 import time
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from fastapi import HTTPException
 from schemas import AuthRequest
-from pydantic import ValidationError
 from crud import (
     enrich_session_with_login,
     find_login_by_session,
+    get_session_from_redis,
     process_traffic_data,
     save_session_to_redis,
     delete_session_from_redis,
     find_sessions_by_login,
 )
 from schemas import AccountingData, AccountingResponse, SessionData, TrafficData
-from redis_client import get_redis, execute_redis_command
 from rabbitmq_client import rmq_send_message
 from utils import now_str, nasportid_parse
 
@@ -29,33 +27,6 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-async def get_session_from_redis(redis_key: str) -> Optional[SessionData]:
-    """
-    Получение сессии из Redis и преобразование в модель RedisSessionData.
-    """
-    redis = await get_redis()
-    try:
-        session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
-        if not session_data:
-            logger.debug(f"No session data found for key: {redis_key}")
-            return None
-
-        parsed_data = json.loads(session_data)
-        session = SessionData(**parsed_data)
-        logger.debug(f"Successfully retrieved session for key: {redis_key}")
-        return session
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON for key {redis_key}: {e}")
-        return None
-    except ValidationError as e:
-        logger.error(f"Invalid session data for key {redis_key}: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Failed to get session from Redis for key {redis_key}: {e}")
-        return None
 
 
 async def send_coa_session_kill(session_req) -> bool:
@@ -87,10 +58,10 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         )
         # Получаем активную сессию из Redis
         redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
-        session_stored = await get_session_from_redis(redis_key)
-
-        # Ищем логин
-        login = await find_login_by_session(session_req)
+        session_stored, login = await asyncio.gather(
+            get_session_from_redis(redis_key),
+            find_login_by_session(session_req),
+        )
 
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)
