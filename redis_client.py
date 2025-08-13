@@ -13,7 +13,6 @@ from config import (
 
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
-import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +43,9 @@ class RedisClient:
                             ),
                             socket_keepalive=True,
                             socket_keepalive_options={},
-                            health_check_interval=15,  # More frequent health checks
-                            socket_connect_timeout=5,  # Faster timeout
-                            socket_timeout=5,  # Faster timeout
+                            health_check_interval=15,
+                            socket_connect_timeout=5,
+                            socket_timeout=5,
                         )
                         self._redis = redis.Redis(connection_pool=self._pool)
                         # Проверяем соединение
@@ -111,27 +110,15 @@ async def get_redis_connection_optimized():
 
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
-    # Логируем количество задач, ожидающих семафор
     waiting_tasks = (
         len(_redis_client._semaphore._waiters)
         if _redis_client._semaphore._waiters
         else 0
     )
-    # Only warn if waiting tasks exceed the new threshold
     if waiting_tasks > REDIS_WARNING_THRESHOLD:
         logger.warning(
             f"High Redis connection contention: {waiting_tasks} tasks waiting"
         )
-
-    # Update metrics gauges
-    available = _redis_client._semaphore._value
-    max_conns = _redis_client._pool.max_connections if _redis_client._pool else 0
-    try:
-        metrics.metrics.set_gauge("radius_redis_available_permits", float(available))
-        metrics.metrics.set_gauge("radius_redis_waiting_tasks", float(waiting_tasks))
-        metrics.metrics.set_gauge("radius_redis_max_connections", float(max_conns))
-    except Exception:
-        pass
 
     return await _redis_client.get_client()
 
@@ -148,31 +135,23 @@ async def redis_health_check() -> bool:
 
 async def execute_redis_command(redis_client, *args, timeout: float | None = None):
     """Выполнить команду Redis с тайм-аутом"""
-    start = asyncio.get_event_loop().time()
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
     try:
         async with _redis_client._semaphore:
             result = await asyncio.wait_for(
                 redis_client.execute_command(*args), timeout=eff_timeout
             )
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", str(args[0]), "success", duration)
         return result
     except asyncio.TimeoutError:
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", str(args[0]), "timeout", duration)
         logger.error(f"Redis command timeout after {eff_timeout}s: {args[0]}")
         raise
     except Exception as e:
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", str(args[0]), "error", duration)
         logger.error(f"Redis command error: {e}")
         raise
 
 
 async def execute_redis_pipeline(commands: list, timeout: float | None = None):
     """Выполнить пакет команд Redis через pipeline для повышения производительности"""
-    start = asyncio.get_event_loop().time()
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
 
     try:
@@ -187,16 +166,10 @@ async def execute_redis_pipeline(commands: list, timeout: float | None = None):
             # Выполняем весь пакет
             result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
 
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", "pipeline", "success", duration)
         return result
     except asyncio.TimeoutError:
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", "pipeline", "timeout", duration)
         logger.error(f"Redis pipeline timeout after {eff_timeout}s")
         raise
     except Exception as e:
-        duration = asyncio.get_event_loop().time() - start
-        metrics.record_external_call("redis", "pipeline", "error", duration)
         logger.error(f"Redis pipeline error: {e}")
         raise

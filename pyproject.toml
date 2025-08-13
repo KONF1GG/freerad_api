@@ -14,4 +14,5 @@ dependencies = [
     "uvloop>=0.21.0",
     "prometheus-client>=0.20.0",
     "python-dotenv>=1.1.1",
+    "prometheus-fastapi-instrumentator>=7.0.0",
 ]

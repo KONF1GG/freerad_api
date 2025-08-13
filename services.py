@@ -27,7 +27,6 @@ from config import (
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
 )
-import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +85,6 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.info(
             f"Обработка аккаунтинга: {packet_type} для сессии {session_unique_id}"
         )
-
-        # Записываем метрики
-        metrics.record_packet("accounting", "received", packet_type)
-        metrics.record_accounting_packet(packet_type, "UNKNOWN")
-
         # Получаем активную сессию из Redis
         redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
         session_stored = await get_session_from_redis(redis_key)
@@ -295,18 +289,14 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
     except Exception as e:
         status = "error"
         logger.error(f"Ошибка при обработке аккаунтинга: {e}", exc_info=True)
-        metrics.record_error("accounting_exception", "accounting")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         exec_time = time.time() - start_time
-        metrics.record_operation_duration("accounting", exec_time, status)
         logger.debug(f"Аккаунтинг занял {exec_time:.3f}s, статус: {status}")
 
 
 async def auth(data: AuthRequest) -> Dict:
     """Авторизация пользователя"""
-    start_time = time.time()
-    status = "success"
 
     try:
         logger.info(f"Попытка авторизации: {data}")
@@ -505,15 +495,9 @@ async def auth(data: AuthRequest) -> Dict:
         logger.error(f"Error processing authorization request: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-    finally:
-        exec_time = time.time() - start_time
-        metrics.record_operation_duration("auth", exec_time, status)
-
 
 async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> bool:
     """Сохранение сессии в ClickHouse через RabbitMQ"""
-    start_time = time.time()
-    status = "success"
     logger.info(
         f"Сохранение сессии в ClickHouse: {session_data.Acct_Unique_Session_Id}"
     )
@@ -588,23 +572,16 @@ async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> 
             )
         return result
     except Exception as e:
-        status = "error"
         logger.error(
             f"Ошибка при сохранении сессии {session_data.Acct_Unique_Session_Id}: {e}"
         )
-        metrics.record_error("clickhouse_save_session_error", "ch_save_session")
         raise
-    finally:
-        exec_time = time.time() - start_time
-        metrics.record_operation_duration("ch_save_session", exec_time, status)
 
 
 async def ch_save_traffic(
     session_new: SessionData, session_stored: Optional[SessionData] = None
 ) -> bool:
     """Сохранение трафика в ClickHouse через RabbitMQ"""
-    start_time = time.time()
-    status = "success"
 
     try:
         # Определяем поля трафика и их алиасы
@@ -663,12 +640,7 @@ async def ch_save_traffic(
         return result
 
     except Exception as e:
-        status = "error"
         logger.error(
             f"Ошибка сохранения трафика для {session_new.Acct_Unique_Session_Id}: {e}"
         )
-        metrics.record_error("clickhouse_save_traffic_error", "ch_save_traffic")
         return False
-    finally:
-        exec_time = time.time() - start_time
-        metrics.record_operation_duration("ch_save_traffic", exec_time, status)

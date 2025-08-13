@@ -3,22 +3,25 @@ import uvloop
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
+from prometheus_fastapi_instrumentator import Instrumentator
 from schemas import AccountingData, AccountingResponse, AuthRequest
 from typing import Dict
 from services import auth, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
-from metrics import get_metrics_summary, get_prometheus_metrics
+import os
+
+log_dir = "/var/log/radius_core/"
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "radius_log.log")
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("logs/radius_core.log")],
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
 )
 
 logging.getLogger("aio_pika").setLevel(logging.INFO)
@@ -26,7 +29,7 @@ logging.getLogger("aiormq").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-# Установка политики событийного цикла
+# Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
@@ -60,6 +63,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Настройка автоматических метрик Prometheus
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app)
+
 # Добавляем CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -68,26 +75,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Глобальный обработчик исключений"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
-
-
-@app.get("/metrics")
-async def metrics():
-    """Метрики сервиса"""
-    return get_metrics_summary()
-
-
-@app.get("/metrics_prom")
-async def metrics_prometheus():
-    """Prometheus-совместимые метрики (для скрейпа Prometheus/Grafana)."""
-    payload, content_type = get_prometheus_metrics()
-    return Response(content=payload, media_type=content_type)
 
 
 @app.get("/health")
@@ -137,13 +124,16 @@ async def do_acct(data: AccountingData):
     try:
         return await process_accounting(data)
     except HTTPException as http_exc:
-        logger.error(f"HTTP error processing accounting request: {http_exc}", exc_info=True)
+        logger.error(
+            f"HTTP error processing accounting request: {http_exc}", exc_info=True
+        )
         raise
     except Exception as e:
         logger.error(f"Error processing accounting request: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+# Основной эндпоинт авторизации
 @app.post("/authorize/", response_model=Dict)
 async def do_auth(data: AuthRequest):
     """Авторизация пользователя"""
@@ -159,7 +149,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,
         access_log=True,
         log_level="debug",
     )
