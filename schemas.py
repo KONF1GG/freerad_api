@@ -238,6 +238,10 @@ class TrafficData(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
+class CoaRequest(BaseModel):
+    """Модель запроса CoA"""
+    login: str
+
 
 class AuthRequest(BaseModel):
     """Модель запроса авторизации RADIUS (Access-Request)"""

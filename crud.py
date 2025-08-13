@@ -1,24 +1,40 @@
-import time
-import re
 import json
 import logging
-from typing import Optional
+import re
+import time
+from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
+
+from config import (
+    AMQP_SESSION_QUEUE,
+    AMQP_TRAFFIC_QUEUE,
+    RADIUS_LOGIN_PREFIX,
+)
+
+from datetime import datetime, timezone
+
+from rabbitmq_client import rmq_send_message
 from redis_client import (
-    get_redis,
     execute_redis_command,
     execute_redis_pipeline,
+    get_redis,
 )
-from config import RADIUS_LOGIN_PREFIX
 from schemas import (
     AccountingData,
     AuthRequest,
     EnrichedSessionData,
     LoginSearchResult,
     SessionData,
+    TrafficData,
 )
-from utils import is_mac_username, mac_from_hex, mac_from_username, nasportid_parse
+from utils import (
+    is_mac_username,
+    mac_from_hex,
+    mac_from_username,
+    nasportid_parse,
+    now_str,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -336,3 +352,153 @@ async def find_sessions_by_login(login: str) -> list[SessionData]:
     except Exception as e:
         logger.error(f"Error searching sessions for login '{login}': {e}")
         return []
+
+
+async def ch_save_session(session_data: SessionData, stoptime: bool = False) -> bool:
+    """Сохранение сессии в ClickHouse через RabbitMQ"""
+    logger.info(
+        f"Сохранение сессии в ClickHouse: {session_data.Acct_Unique_Session_Id}"
+    )
+
+    try:
+        # Убеждаемся что все времена в UTC формате
+        if session_data.Event_Timestamp:
+            # Приводим к UTC если нужно
+            if session_data.Event_Timestamp.tzinfo is None:
+                session_data.Event_Timestamp = session_data.Event_Timestamp.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Event_Timestamp = session_data.Event_Timestamp.astimezone(
+                    timezone.utc
+                )
+
+        # Устанавливаем Acct_Update_Time если он еще не установлен
+        if not session_data.Acct_Update_Time:
+            session_data.Acct_Update_Time = (
+                session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
+            )
+
+        # Приводим Acct_Update_Time к UTC
+        if session_data.Acct_Update_Time.tzinfo is None:
+            session_data.Acct_Update_Time = session_data.Acct_Update_Time.replace(
+                tzinfo=timezone.utc
+            )
+        else:
+            session_data.Acct_Update_Time = session_data.Acct_Update_Time.astimezone(
+                timezone.utc
+            )
+
+        # Приводим Acct_Start_Time к UTC если он есть
+        if session_data.Acct_Start_Time:
+            if session_data.Acct_Start_Time.tzinfo is None:
+                session_data.Acct_Start_Time = session_data.Acct_Start_Time.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Acct_Start_Time = session_data.Acct_Start_Time.astimezone(
+                    timezone.utc
+                )
+
+        # Обрабатываем Acct_Stop_Time
+        if stoptime:
+            if not session_data.Acct_Stop_Time:
+                session_data.Acct_Stop_Time = (
+                    session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
+                )
+            # Приводим к UTC
+            if session_data.Acct_Stop_Time.tzinfo is None:
+                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.replace(
+                    tzinfo=timezone.utc
+                )
+            else:
+                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.astimezone(
+                    timezone.utc
+                )
+            logger.debug(
+                f"Сессия будет остановлена: {session_data.Acct_Unique_Session_Id}"
+            )
+        else:
+            # Активная сессия, не заполняем Stop-Time
+            logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
+            session_data.Acct_Stop_Time = None
+
+        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
+        if result:
+            logger.info(
+                f"Сессия отправлена в очередь session_queue: {session_data.Acct_Unique_Session_Id}"
+            )
+        return result
+    except Exception as e:
+        logger.error(
+            f"Ошибка при сохранении сессии {session_data.Acct_Unique_Session_Id}: {e}"
+        )
+        raise
+
+
+async def ch_save_traffic(
+    session_new: SessionData, session_stored: Optional[SessionData] = None
+) -> bool:
+    """Сохранение трафика в ClickHouse через RabbitMQ"""
+
+    try:
+        # Определяем поля трафика и их алиасы
+        traffic_fields = [
+            ("Acct_Input_Octets", "Acct-Input-Octets"),
+            ("Acct_Output_Octets", "Acct-Output-Octets"),
+            ("Acct_Input_Packets", "Acct-Input-Packets"),
+            ("Acct_Output_Packets", "Acct-Output-Packets"),
+            ("ERX_IPv6_Acct_Input_Octets", "ERX-IPv6-Acct-Input-Octets"),
+            ("ERX_IPv6_Acct_Output_Octets", "ERX-IPv6-Acct-Output-Octets"),
+            ("ERX_IPv6_Acct_Input_Packets", "ERX-IPv6-Acct-Input-Packets"),
+            ("ERX_IPv6_Acct_Output_Packets", "ERX-IPv6-Acct-Output-Packets"),
+        ]
+
+        # Базовые данные с алиасами
+        traffic_data: Dict[str, Any] = {
+            "Acct-Unique-Session-Id": session_new.Acct_Unique_Session_Id,
+            "login": session_new.login,
+            "timestamp": now_str(),
+        }
+
+        # Добавляем трафик (дельта или полный) с алиасами
+        negative_deltas = []
+        for field, alias in traffic_fields:
+            new_val = getattr(session_new, field, 0) or 0
+
+            if session_stored:
+                stored_val = getattr(session_stored, field, 0) or 0
+                delta = new_val - stored_val
+                if delta < 0:
+                    negative_deltas.append(
+                        f"{field}: {stored_val} -> {new_val}, Δ={delta}"
+                    )
+                    delta = 0
+                traffic_data[alias] = delta
+            else:
+                traffic_data[alias] = new_val
+
+        if negative_deltas:
+            logger.error(
+                f"Отрицательная дельта трафика для {session_new.Acct_Unique_Session_Id}: "
+                f"; ".join(negative_deltas)
+            )
+
+        traffic_model = TrafficData(**traffic_data)
+
+        # Отправляем в RabbitMQ
+        result = await rmq_send_message(AMQP_TRAFFIC_QUEUE, traffic_model)
+
+        if result:
+            action = "дельта" if session_stored else "полный"
+            logger.info(
+                f"Трафик ({action}) отправлен в очередь: {session_new.Acct_Unique_Session_Id}"
+            )
+
+        return result
+
+    except Exception as e:
+        logger.error(
+            f"Ошибка сохранения трафика для {session_new.Acct_Unique_Session_Id}: {e}"
+        )
+        return False
