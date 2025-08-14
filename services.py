@@ -104,15 +104,15 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             session_stored_dict = session_stored.model_dump(by_alias=True)
             session_req_dict = session_req.model_dump(by_alias=True)
             # Если сессия не сервисная, не обновляем ERX_Service_Session
-            if not is_service_session and "ERX_Service_Session" in session_req_dict:
-                session_req_dict.pop("ERX_Service_Session")
+            if not is_service_session and "ERX-Service-Session" in session_req_dict:
+                session_req_dict.pop("ERX-Service-Session")
             session_stored_dict.update(session_req_dict)
             session_new = SessionData(**session_stored_dict)
         else:
             logger.info("Создание новой сессии из входящих данных")
             session_req_dict = session_req.model_dump(by_alias=True)
-            if not is_service_session and "ERX_Service_Session" in session_req_dict:
-                session_req_dict.pop("ERX_Service_Session")
+            if not is_service_session and "ERX-Service-Session" in session_req_dict:
+                session_req_dict.pop("ERX-Service-Session")
             session_new = SessionData(**session_req_dict)
 
         # Обработка по типу пакета
