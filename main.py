@@ -10,7 +10,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from contextlib import asynccontextmanager
 
 from schemas import AccountingData, AccountingResponse, AuthRequest, CoaRequest
-from services import auth, process_accounting, process_coa
+from services import auth, check_and_correct_services, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 
@@ -176,13 +176,13 @@ async def do_auth(data: AuthRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Эндпоинт CoA
-@app.post("/coa/", response_model=Dict)
+# Эндпоинт для проверки включенных сервисов
+@app.post("/check_and_correct_services/", response_model=Dict)
 async def do_coa(data: CoaRequest):
     """Обработка CoA (Change of Authorization) запроса"""
     logger.info(f"Processing CoA request for user: {data.login}")
     try:
-        result = await process_coa(data.login)
+        result = await check_and_correct_services(data.login)
         logger.info(f"CoA request processed successfully for user: {data.login}")
         return result
     except Exception as e:

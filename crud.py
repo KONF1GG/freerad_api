@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from pydantic import ValidationError
 
 from config import (
+    AMQP_AUTH_LOG_QUEUE,
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
     RADIUS_LOGIN_PREFIX,
@@ -22,6 +23,7 @@ from redis_client import (
 )
 from schemas import (
     AccountingData,
+    AuthDataLog,
     AuthRequest,
     EnrichedSessionData,
     LoginSearchResult,
@@ -500,5 +502,19 @@ async def ch_save_traffic(
     except Exception as e:
         logger.error(
             f"Ошибка сохранения трафика для {session_new.Acct_Unique_Session_Id}: {e}"
+        )
+        return False
+
+
+async def save_auth_log(auth_data: AuthDataLog) -> bool:
+    logger.debug(f"Сохранение лога авторизации: {auth_data.username}")
+    try:
+        result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)
+        if result:
+            logger.info(f"Лог авторизации отправлен в очередь: {auth_data.username}")
+        return result
+    except Exception as e:
+        logger.error(
+            f"Ошибка сохранения лога авторизации для {auth_data.username}: {e}"
         )
         return False

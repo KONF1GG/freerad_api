@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, ConfigDict
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, Union
 from utils import parse_event
 import logging
 from datetime import datetime, timezone
@@ -129,21 +129,6 @@ class AccountingData(BaseAccountingData):
     pass
 
 
-class SessionData(BaseAccountingData):
-    login: Optional[str] = ""
-    auth_type: Optional[str] = "UNKNOWN"
-    onu_mac: Optional[str] = None
-    contract: Optional[str] = ""
-    ERX_Service_Session: Optional[str] = Field("", alias="ERX-Service-Session")
-
-    GMT: Optional[int] = 5
-    Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
-    Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
-    Acct_Update_Time: Optional[datetime] = Field(None, alias="Acct-Update-Time")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
 class AccountingResponse(BaseModel):
     action: Literal["noop", "kill", "update", "log"] = "noop"
     reason: Optional[str] = None
@@ -186,6 +171,15 @@ class LoginBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
+class SessionData(BaseAccountingData, LoginBase):
+    GMT: Optional[int] = 5
+    Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
+    Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
+    Acct_Update_Time: Optional[datetime] = Field(None, alias="Acct-Update-Time")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class LoginSearchResult(LoginBase):
     """Модель для результата поиска логина."""
 
@@ -194,8 +188,6 @@ class LoginSearchResult(LoginBase):
 
 class EnrichedSessionData(AccountingData, LoginBase):
     """Модель для сессии с данными логина."""
-
-    service: Optional[str] = Field(default=None)
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
@@ -279,8 +271,6 @@ class AuthRequest(BaseModel):
         ..., alias="ERX-DHCP-First-Relay-IPv4-Address"
     )
 
-    #    Event_Timestamp: datetime = Field(..., alias="Event-Timestamp")
-
     Event_Timestamp: datetime = Field(
         default_factory=lambda: datetime.now(tz=timezone.utc), alias="Event-Timestamp"
     )
@@ -293,10 +283,55 @@ class AuthRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
+class AuthDataLog(BaseModel):
+    """Модель данных авторизации для логирования"""
+
+    username: Optional[str] = None
+    password: Optional[str] = None
+    callingstationid: Optional[str] = None
+    nasipaddress: Optional[str] = None
+    reply: Optional[str] = None  # Access-Accept / Access-Reject
+    reason: Optional[str] = None  # текст из Reply-Message
+    speed: Optional[float] = None  # исходная скорость услуги
+    pool: Optional[str] = None
+    agentremoteid: Optional[str] = None
+    agentcircuitid: Optional[str] = None
+    authdate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AuthResponse(BaseModel):
-    success: bool
-    message: Optional[str] = None
-    attributes: Dict[str, Any] = Field(default_factory=dict)
+    # Reply
+    reply_framed_ip_address: Optional[str] = Field(
+        None, alias="reply:Framed-IP-Address"
+    )
+    reply_framed_pool: Optional[str] = Field(None, alias="reply:Framed-Pool")
+    reply_framed_ipv6_prefix: Optional[str] = Field(
+        None, alias="reply:Framed-IPv6-Prefix"
+    )
+    reply_delegated_ipv6_prefix: Optional[str] = Field(
+        None, alias="reply:Delegated-IPv6-Prefix"
+    )
+    reply_framed_route: Optional[str] = Field(None, alias="reply:Framed-Route")
+    reply_erx_service_activate: Optional[str] = Field(
+        None, alias="reply:ERX-Service-Activate:1"
+    )
+    reply_erx_virtual_router_name: Optional[str] = Field(
+        None, alias="reply:ERX-Virtual-Router-Name"
+    )
+    reply_nas_port_id: Optional[str] = Field(None, alias="reply:NAS-Port-Id")
+    reply_idle_timeout: Optional[str] = Field(None, alias="reply:Idle-Timeout")
+    reply_message: Optional[Dict[str, str]] = Field(None, alias="reply:Reply-Message")
+
+    # Control
+    control_cleartext_password: Optional[Dict[str, str]] = Field(
+        None, alias="control:Cleartext-Password"
+    )
+    control_auth_type: Optional[Dict[str, str]] = Field(None, alias="control:Auth-Type")
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    def to_radius(self) -> Dict[str, Any]:
+        return self.model_dump(by_alias=True, exclude_none=True)
 
 
-RABBIT_MODELS = TrafficData | SessionData
+RABBIT_MODELS = TrafficData | SessionData | AuthDataLog
