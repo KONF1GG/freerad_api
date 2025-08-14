@@ -582,9 +582,7 @@ async def update_main_session_service(service_session_req: EnrichedSessionData) 
                             f"Основная сессия для обновления [{i}]: {main_session}"
                         )
                         # Обновляем поле ERX-Service-Session в основной сессии
-                        main_session.ERX_Service_Session = (
-                            service_session_req.ERX_Service_Session
-                        )
+                        main_session.ERX_Service_Session = service_session_req.ERX_Service_Session
                         # Сохраняем обновленную основную сессию обратно в Redis
                         main_redis_key = f"{RADIUS_SESSION_PREFIX}{main_session.Acct_Unique_Session_Id}"
                         await save_session_to_redis(main_session, main_redis_key)

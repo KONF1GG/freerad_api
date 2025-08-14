@@ -103,11 +103,17 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             logger.info("Обогащение существующей сессии новыми данными")
             session_stored_dict = session_stored.model_dump(by_alias=True)
             session_req_dict = session_req.model_dump(by_alias=True)
+            # Если сессия не сервисная, не обновляем ERX_Service_Session
+            if not is_service_session and "ERX_Service_Session" in session_req_dict:
+                session_req_dict.pop("ERX_Service_Session")
             session_stored_dict.update(session_req_dict)
             session_new = SessionData(**session_stored_dict)
         else:
             logger.info("Создание новой сессии из входящих данных")
-            session_new = SessionData(**session_req.model_dump(by_alias=True))
+            session_req_dict = session_req.model_dump(by_alias=True)
+            if not is_service_session and "ERX_Service_Session" in session_req_dict:
+                session_req_dict.pop("ERX_Service_Session")
+            session_new = SessionData(**session_req_dict)
 
         # Обработка по типу пакета
         # Если пакет типа Start, создаем новую сессию
@@ -397,27 +403,26 @@ async def auth(data: AuthRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-async def check_and_correct_services(login: str): ...
+async def check_and_correct_services(login: str):
+    sessions = await find_sessions_by_login(login)
 
+    for session in sessions:
+        if session.ERX_Service_Session:
+            timeto = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "timeto",
+                None,
+            )
+            speed = getattr(
+                getattr(getattr(login, "servicecats", None), "internet", None),
+                "speed",
+                None,
+            )
 
-#     sessions = await find_sessions_by_login(login)
+            # Проверяем текущее время для сравнения со сроком действия услуги
+            now_timestamp = datetime.now(tz=timezone.utc).timestamp()
+            service_should_be_blocked = False
 
-#     for session in sessions:
-#         if session.ERX_Service_Session:
-#             timeto = getattr(
-#                 getattr(getattr(login, "servicecats", None), "internet", None),
-#                 "timeto",
-#                 None,
-#             )
-#             speed = getattr(
-#                 getattr(getattr(login, "servicecats", None), "internet", None),
-#                 "speed",
-#                 None,
-#             )
-
-#             # Проверяем текущее время для сравнения со сроком действия услуги
-#             now_timestamp = datetime.now(tz=timezone.utc).timestamp()
-#             service_should_be_blocked = False
 
 #             if timeto is not None:
 #                 try:
