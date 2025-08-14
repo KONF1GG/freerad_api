@@ -166,9 +166,8 @@ class LoginBase(BaseModel):
     ipv6: Optional[str] = None
     ipv6_pd: Optional[str] = None
     password: Optional[str] = None
-    ipAddress: Optional[str] = None
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class SessionData(BaseAccountingData, LoginBase):
@@ -189,7 +188,7 @@ class LoginSearchResult(LoginBase):
 class EnrichedSessionData(AccountingData, LoginBase):
     """Модель для сессии с данными логина."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class TrafficData(BaseModel):
@@ -228,7 +227,7 @@ class TrafficData(BaseModel):
             return 0
         return max(0, int(value))
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class CoaRequest(BaseModel):
@@ -280,7 +279,7 @@ class AuthRequest(BaseModel):
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class AuthDataLog(BaseModel):
@@ -328,7 +327,7 @@ class AuthResponse(BaseModel):
     )
     control_auth_type: Optional[Dict[str, str]] = Field(None, alias="control:Auth-Type")
 
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     def to_radius(self) -> Dict[str, Any]:
         return self.model_dump(by_alias=True, exclude_none=True)
