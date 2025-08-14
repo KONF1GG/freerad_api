@@ -33,7 +33,7 @@ for handler in root_logger.handlers[:]:
 # Файловый хендлер для подробных логов приложения
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(formatter)
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(logging.DEBUG)
 
 # Добавляем файловый хендлер к корневому логгеру
 root_logger.addHandler(file_handler)
@@ -200,5 +200,5 @@ if __name__ == "__main__":
         port=8000,
         reload=False,
         access_log=True,  # HTTP логи в stdout для docker logs
-        log_level="info",
+        log_level="debug",
     )
