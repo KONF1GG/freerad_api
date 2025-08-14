@@ -551,32 +551,63 @@ async def update_main_session_service(service_session_req: EnrichedSessionData) 
         # Получаем основную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 
+        logger.debug(
+            f"FT.SEARCH result for main_session_id={main_session_id}: {result}"
+        )
+
         if result and result[0] > 0:
-            # Парсим результат: [count, key, fields]
-            doc_data = result[2][1] 
-            if isinstance(doc_data, bytes):
-                doc_data = doc_data.decode("utf-8")
-
-            session_dict = json.loads(doc_data)
-            main_session = SessionData(**session_dict)
-
-            # Обновляем поле ERX-Service-Session в основной сессии
-            main_session.ERX_Service_Session = service_session_req.ERX_Service_Session
-
-            # Сохраняем обновленную основную сессию обратно в Redis
-            main_redis_key = (
-                f"{RADIUS_SESSION_PREFIX}{main_session.Acct_Unique_Session_Id}"
-            )
-            await save_session_to_redis(main_session, main_redis_key)
-
+            num_results = result[0]
             logger.info(
-                f"Обновлено поле ERX-Service-Session в основной сессии {main_session_id}: "
-                f"{service_session_req.ERX_Service_Session}"
+                f"Найдено {num_results} сессий по Acct-Session-Id {main_session_id}"
             )
-            return True
+            for i in range(num_results):
+                try:
+                    fields = result[2 + i * 2]
+                    logger.debug(f"fields[{i}]: {fields}")
+                    if (
+                        isinstance(fields, list)
+                        and len(fields) >= 2
+                        and fields[0] == "$"
+                    ):
+                        doc_data = fields[1]
+                        logger.debug(f"doc_data[{i}]: {doc_data}")
+                        if isinstance(doc_data, bytes):
+                            doc_data = doc_data.decode("utf-8")
+                        logger.debug(f"doc_data[{i}] (decoded): {doc_data}")
+                        session_dict = json.loads(doc_data)
+                        logger.debug(f"session_dict[{i}]: {session_dict}")
+                        main_session = SessionData(**session_dict)
+                        logger.info(
+                            f"Основная сессия для обновления [{i}]: {main_session}"
+                        )
+                        # Обновляем поле ERX-Service-Session в основной сессии
+                        main_session.ERX_Service_Session = (
+                            service_session_req.ERX_Service_Session
+                        )
+                        # Сохраняем обновленную основную сессию обратно в Redis
+                        main_redis_key = f"{RADIUS_SESSION_PREFIX}{main_session.Acct_Unique_Session_Id}"
+                        await save_session_to_redis(main_session, main_redis_key)
+                        logger.info(
+                            f"Обновлено поле ERX-Service-Session в основной сессии {main_session_id}: "
+                            f"{service_session_req.ERX_Service_Session}"
+                        )
+                        return True
+                    else:
+                        logger.warning(
+                            f"fields[{i}] не содержит ожидаемых данных: {fields}"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при обработке результата FT.SEARCH для основной сессии [{i}]: {e}",
+                        exc_info=True,
+                    )
+            logger.warning(
+                f"Не удалось найти и обновить основную сессию с Acct-Session-Id {main_session_id} после перебора всех результатов. Итоговый result: {result}"
+            )
+            return False
         else:
             logger.warning(
-                f"Основная сессия с Acct-Session-Id {main_session_id} не найдена в Redis"
+                f"Основная сессия с Acct-Session-Id {main_session_id} не найдена в Redis. FT.SEARCH result: {result}"
             )
             return False
 
