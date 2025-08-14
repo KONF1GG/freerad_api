@@ -507,7 +507,7 @@ async def ch_save_traffic(
         return False
 
 
-async def save_auth_log(auth_data: AuthDataLog) -> bool:
+async def save_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
     logger.debug(f"Сохранение лога авторизации: {auth_data.username}")
     try:
         result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)

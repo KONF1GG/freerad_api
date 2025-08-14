@@ -1,3 +1,4 @@
+from unittest.mock import Base
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, ConfigDict
 from typing import Optional, Dict, Any, Literal, Union
 from utils import parse_event
@@ -132,7 +133,6 @@ class AccountingData(BaseAccountingData):
 class AccountingResponse(BaseModel):
     action: Literal["noop", "kill", "update", "log"] = "noop"
     reason: Optional[str] = None
-    coa_attributes: Optional[Dict[str, Any]] = None
     status: Literal["success", "error"] = "success"
     session_id: Optional[str] = None
 
@@ -230,10 +230,10 @@ class TrafficData(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
 
-class CoaRequest(BaseModel):
+class CorrectRequest(BaseModel):
     """Модель запроса CoA"""
 
-    login: str
+    key: str
 
 
 class AuthRequest(BaseModel):
