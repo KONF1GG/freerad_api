@@ -24,7 +24,7 @@ formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s
 
 # Настройка корневого логгера для всего приложения
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
+root_logger.setLevel(logging.DEBUG)
 
 # Удаляем все существующие хендлеры
 for handler in root_logger.handlers[:]:

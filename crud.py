@@ -5,12 +5,14 @@ import time
 from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
+from requests import get
 
 from config import (
     AMQP_AUTH_LOG_QUEUE,
     AMQP_SESSION_QUEUE,
     AMQP_TRAFFIC_QUEUE,
     RADIUS_LOGIN_PREFIX,
+    RADIUS_SESSION_PREFIX,
 )
 
 from datetime import datetime, timezone
@@ -517,4 +519,68 @@ async def save_auth_log(auth_data: AuthDataLog) -> bool:
         logger.error(
             f"Ошибка сохранения лога авторизации для {auth_data.username}: {e}"
         )
+        return False
+
+
+async def update_main_session_service(service_session_req: EnrichedSessionData) -> bool:
+    """
+    Обновляет поле ERX-Service-Session в основной сессии на основе данных сервисной сессии.
+    Returns:
+        bool: True если обновление прошло успешно, False если основная сессия не найдена
+    """
+    try:
+        service_session_id = service_session_req.Acct_Session_Id
+        redis = await get_redis()
+
+        # Извлекаем основной ID из сервисного (берем часть до двоеточия)
+        if ":" in service_session_id:
+            main_session_id = service_session_id.split(":")[0]
+        else:
+            logger.warning(
+                f"Неожиданный формат ID сервисной сессии: {service_session_id}"
+            )
+            return False
+
+        logger.debug(
+            f"Поиск основной сессии по Acct-Session-Id: {service_session_id} -> {main_session_id}"
+        )
+
+        # Поиск основной сессии по полю Acct-Session-Id в индексе
+        index = "idx:radius:session"
+        query = f"@Acct\\-Session\\-Id:{{{main_session_id}}}"
+
+        # Получаем основную сессию из Redis
+        result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+
+        if result and result[0] > 0:
+            # Парсим результат: [count, key, fields]
+            doc_data = result[2][1] 
+            if isinstance(doc_data, bytes):
+                doc_data = doc_data.decode("utf-8")
+
+            session_dict = json.loads(doc_data)
+            main_session = SessionData(**session_dict)
+
+            # Обновляем поле ERX-Service-Session в основной сессии
+            main_session.ERX_Service_Session = service_session_req.ERX_Service_Session
+
+            # Сохраняем обновленную основную сессию обратно в Redis
+            main_redis_key = (
+                f"{RADIUS_SESSION_PREFIX}{main_session.Acct_Unique_Session_Id}"
+            )
+            await save_session_to_redis(main_session, main_redis_key)
+
+            logger.info(
+                f"Обновлено поле ERX-Service-Session в основной сессии {main_session_id}: "
+                f"{service_session_req.ERX_Service_Session}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"Основная сессия с Acct-Session-Id {main_session_id} не найдена в Redis"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении основной сессии: {e}", exc_info=True)
         return False

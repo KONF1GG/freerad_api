@@ -19,6 +19,7 @@ from crud import (
     save_auth_log,
     save_session_to_redis,
     delete_session_from_redis,
+    update_main_session_service,
 )
 from schemas import (
     AccountingData,
@@ -75,7 +76,12 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
 
         # Обработка сервисной сессии
         if service and login:
-            ...
+            session_id = session_req.Acct_Session_Id
+            if ":" in session_id:
+                logger.info(f"Обработка сервисной сессии {session_id}")
+
+                # Обновляем основную сессию с информацией о сервисе
+                await update_main_session_service(session_req)
 
         # Проверка смены логина
         if (
