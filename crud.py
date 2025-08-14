@@ -5,7 +5,6 @@ import time
 from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
-from requests import get
 
 from config import (
     AMQP_AUTH_LOG_QUEUE,
