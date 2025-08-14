@@ -547,6 +547,7 @@ async def update_main_session_service(service_session_req: EnrichedSessionData) 
         # Поиск основной сессии по полю Acct-Session-Id в индексе
         index = "idx:radius:session"
         query = f"@Acct\\-Session\\-Id:{{{main_session_id}}}"
+        logger.debug(f"Поиск основной сессии в индексе {index} с запросом {query}")
 
         # Получаем основную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
