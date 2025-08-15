@@ -42,11 +42,12 @@ from utils import (
 logger = logging.getLogger(__name__)
 
 
-async def get_session_from_redis(redis_key: str) -> Optional[SessionData]:
+async def get_session_from_redis(redis_key: str, redis=None) -> Optional[SessionData]:
     """
     Получение сессии из Redis и преобразование в модель RedisSessionData.
     """
-    redis = await get_redis()
+    if redis is None:
+        redis = await get_redis()
     try:
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
         if not session_data:
@@ -125,7 +126,9 @@ async def process_traffic_data(session_req: EnrichedSessionData) -> EnrichedSess
     return session_req
 
 
-async def save_session_to_redis(session_data: SessionData, redis_key: str) -> bool:
+async def save_session_to_redis(
+    session_data: SessionData, redis_key: str, redis=None
+) -> bool:
     """Сохранение сессии в Redis с оптимизацией через pipeline"""
     try:
         # Используем pipeline для выполнения двух команд за один раз
@@ -133,7 +136,7 @@ async def save_session_to_redis(session_data: SessionData, redis_key: str) -> bo
             ("JSON.SET", redis_key, "$", session_data.model_dump_json(by_alias=True)),
             ("EXPIRE", redis_key, 1800),  # TTL на 30 минут
         ]
-        await execute_redis_pipeline(commands)
+        await execute_redis_pipeline(commands, redis_client=redis)
         logger.debug(f"Session saved to RedisJSON with TTL: {redis_key}")
         return True
     except Exception as e:
@@ -141,10 +144,11 @@ async def save_session_to_redis(session_data: SessionData, redis_key: str) -> bo
         return False
 
 
-async def delete_session_from_redis(redis_key: str) -> bool:
+async def delete_session_from_redis(redis_key: str, redis=None) -> bool:
     """Удаление сессии из Redis"""
     try:
-        redis = await get_redis()
+        if redis is None:
+            redis = await get_redis()
         result = await execute_redis_command(redis, "DEL", redis_key)
         logger.debug(f"Session deleted from Redis: {redis_key}, result: {result}")
         return result > 0
@@ -156,7 +160,7 @@ async def delete_session_from_redis(redis_key: str) -> bool:
 async def search_redis(
     redis,
     query: str,
-    auth_type: str,
+    auth_type: Optional[str] = None,
     key_type: str = "FT.SEARCH",
     index: str = "idx:radius:login",
     redis_key: Optional[str] = None,
@@ -200,7 +204,8 @@ async def search_redis(
             logger.error(f"Unsupported key_type: {key_type}")
             return None
 
-        parsed_data["auth_type"] = auth_type
+        if auth_type:
+            parsed_data["auth_type"] = auth_type
         login_data = LoginSearchResult(**parsed_data)
         logger.debug(f"Found login: {login_data.login} (auth_type: {auth_type})")
         return login_data
@@ -218,18 +223,21 @@ async def search_redis(
 
 async def find_login_by_session(
     session: AccountingData | AuthRequest,
+    redis=None,
 ) -> Optional[LoginSearchResult]:
     """
     Асинхронный поиск логина по данным сессии.
 
     Args:
         session: Данные сессии (AccountingData).
+        redis: Redis client, если не передан - создается новый
 
     Returns:
         Optional[LoginSearchResult]: Результат поиска или None, если логин не найден.
     """
     start_time = time.time()
-    redis = await get_redis()
+    if redis is None:
+        redis = await get_redis()
 
     try:
         nas_port_id = session.NAS_Port_Id
@@ -310,10 +318,8 @@ async def find_login_by_session(
         logger.debug(f"Login search took {exec_time:.3f}s")
 
 
-async def find_sessions_by_login(login: str) -> list[SessionData]:
+async def find_sessions_by_login(login: str, redis) -> list[SessionData]:
     """Найти и вернуть массив всех сессий по логину."""
-    redis = await get_redis()
-
     escaped_login = login.replace("-", r"\-")
     query = f"@login:{{{escaped_login}}}"
     index = "idx:radius:session"
@@ -521,15 +527,21 @@ async def save_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
         return False
 
 
-async def update_main_session_service(service_session_req: EnrichedSessionData) -> bool:
+async def update_main_session_service(
+    service_session_req: EnrichedSessionData, redis=None
+) -> bool:
     """
     Обновляет поле ERX-Service-Session в основной сессии на основе данных сервисной сессии.
+    Args:
+        service_session_req: Данные сервисной сессии
+        redis: Redis client, если не передан - создается новый
     Returns:
         bool: True если обновление прошло успешно, False если основная сессия не найдена
     """
     try:
         service_session_id = service_session_req.Acct_Session_Id
-        redis = await get_redis()
+        if redis is None:
+            redis = await get_redis()
 
         # Извлекаем основной ID из сервисного (берем часть до двоеточия)
         if ":" in service_session_id:
@@ -582,7 +594,9 @@ async def update_main_session_service(service_session_req: EnrichedSessionData) 
                             f"Основная сессия для обновления [{i}]: {main_session}"
                         )
                         # Обновляем поле ERX-Service-Session в основной сессии
-                        main_session.ERX_Service_Session = service_session_req.ERX_Service_Session
+                        main_session.ERX_Service_Session = (
+                            service_session_req.ERX_Service_Session
+                        )
                         # Сохраняем обновленную основную сессию обратно в Redis
                         main_redis_key = f"{RADIUS_SESSION_PREFIX}{main_session.Acct_Unique_Session_Id}"
                         await save_session_to_redis(main_session, main_redis_key)

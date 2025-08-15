@@ -13,8 +13,9 @@ from schemas import AccountingData, AccountingResponse, AuthRequest, CorrectRequ
 from services import auth, check_and_correct_services, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
+from dependencies import RedisDependency, RabbitMQDependency
 
-log_dir = "/var/log/radius_core/"
+log_dir = "~/radius_core/"
 
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, "radius_log.log")
@@ -136,11 +137,13 @@ async def root():
 
 # Основной эндпоинт аккаунтинга
 @app.post("/acct/", response_model=AccountingResponse)
-async def do_acct(data: AccountingData):
+async def do_acct(
+    data: AccountingData, redis: RedisDependency, rabbitmq: RabbitMQDependency
+):
     """Обработка RADIUS Accounting запросов"""
     logger.info(f"Processing accounting request for session: {data.Acct_Session_Id}")
     try:
-        result = await process_accounting(data)
+        result = await process_accounting(data, redis, rabbitmq)
         logger.info(
             f"Accounting request processed successfully for session: {data.Acct_Session_Id}"
         )
@@ -161,13 +164,19 @@ async def do_acct(data: AccountingData):
 
 # Основной эндпоинт авторизации
 @app.post("/authorize/", response_model=Dict)
-async def do_auth(data: AuthRequest):
+async def do_auth(data: AuthRequest, redis: RedisDependency):
     """Авторизация пользователя"""
     logger.info(f"Processing auth request for user: {data.User_Name}")
     try:
-        result = await auth(data)
+        result = await auth(data, redis)
         logger.info(f"Auth request processed successfully for user: {data.User_Name}")
         return result
+    except HTTPException as http_exc:
+        logger.error(
+            f"HTTP error processing authentication request for user {data.User_Name}: {http_exc}",
+            exc_info=True,
+        )
+        raise
     except Exception as e:
         logger.error(
             f"Error processing authentication request for user {data.User_Name}: {e}",
@@ -178,13 +187,19 @@ async def do_auth(data: AuthRequest):
 
 # Эндпоинт для проверки включенных сервисов
 @app.post("/check_and_correct_services/", response_model=Dict)
-async def do_coa(data: CorrectRequest):
+async def do_coa(data: CorrectRequest, redis: RedisDependency):
     """Обработка CoA (Change of Authorization) запроса"""
     logger.info(f"Processing CoA request for user: {data.key}")
     try:
-        result = await check_and_correct_services(data.key)
+        result = await check_and_correct_services(data.key, redis)
         logger.info(f"CoA request processed successfully for user: {data.key}")
         return result
+    except HTTPException as http_exc:
+        logger.error(
+            f"HTTP error processing CoA request for user {data.key}: {http_exc}",
+            exc_info=True,
+        )
+        raise
     except Exception as e:
         logger.error(
             f"Error processing CoA request for user {data.key}: {e}",

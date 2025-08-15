@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 from fastapi import HTTPException
 
-from config import RADIUS_SESSION_PREFIX
+from config import RADIUS_LOGIN_PREFIX, RADIUS_SESSION_PREFIX
 from crud import (
     ch_save_session,
     ch_save_traffic,
@@ -19,6 +19,7 @@ from crud import (
     save_auth_log_to_queue,
     save_session_to_redis,
     delete_session_from_redis,
+    search_redis,
     update_main_session_service,
 )
 from schemas import (
@@ -97,7 +98,9 @@ async def send_coa_session_set(session_req, attributes: Dict[str, Any]) -> bool:
     return True
 
 
-async def process_accounting(data: AccountingData) -> AccountingResponse:
+async def process_accounting(
+    data: AccountingData, redis=None, rabbitmq=None
+) -> AccountingResponse:
     """Основная функция обработки аккаунтинга"""
     start_time = time.time()
     status = "success"
@@ -118,8 +121,8 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         # Получаем активную сессию из Redis и данные логина параллельно
         redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
         session_stored, login = await asyncio.gather(
-            get_session_from_redis(redis_key),
-            find_login_by_session(session_req),
+            get_session_from_redis(redis_key, redis),
+            find_login_by_session(session_req, redis),
         )
 
         # Добавляем данные логина в данные сессии
@@ -133,7 +136,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             session_id = session_req.Acct_Session_Id
             if ":" in session_id:
                 logger.debug(f"Обработка сервисной сессии {session_id}")
-                await update_main_session_service(session_req)
+                await update_main_session_service(session_req, redis)
 
         # Проверка смены логина
         if (
@@ -177,7 +180,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
             session_new.Acct_Stop_Time = None
 
             await asyncio.gather(
-                save_session_to_redis(session_new, redis_key),
+                save_session_to_redis(session_new, redis_key, redis),
                 ch_save_session(session_new),
             )
 
@@ -196,7 +199,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                 tasks.append(ch_save_traffic(session_new, None))
 
             if not is_service_session:
-                tasks.append(save_session_to_redis(session_new, redis_key))
+                tasks.append(save_session_to_redis(session_new, redis_key, redis))
             tasks.append(ch_save_session(session_new))
             await asyncio.gather(*tasks)
 
@@ -218,7 +221,7 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
                     session_new,
                     session_stored if session_stored else None,
                 ),
-                delete_session_from_redis(redis_key)
+                delete_session_from_redis(redis_key, redis)
                 if session_stored
                 else asyncio.sleep(0),
             )
@@ -244,12 +247,12 @@ async def process_accounting(data: AccountingData) -> AccountingResponse:
         logger.debug(f"Время обработки аккаунтинга: {exec_time:.3f}s, статус: {status}")
 
 
-async def auth(data: AuthRequest) -> Dict[str, Any]:
+async def auth(data: AuthRequest, redis=None) -> Dict[str, Any]:
     """Авторизация пользователя"""
     try:
         logger.info(f"Попытка авторизации пользователя: {data.User_Name}")
 
-        login = await find_login_by_session(data)
+        login = await find_login_by_session(data, redis)
         logger.debug(f"Данные логина: {login}")
         session_limit = 2
 
@@ -271,7 +274,7 @@ async def auth(data: AuthRequest) -> Dict[str, Any]:
 
         # Обычные пользователи (не видеокамеры)
         if login.auth_type != "VIDEO":
-            sessions = await find_sessions_by_login(login.login or "")
+            sessions = await find_sessions_by_login(login.login or "", redis)
             session_count = len(sessions)
             logger.debug(f"Найдено активных сессий: {session_count}")
 
@@ -425,7 +428,7 @@ async def auth(data: AuthRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-async def check_and_correct_services(key: str):
+async def check_and_correct_services(key: str, redis=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
     if key.startswith("device:"):
         logger.debug(f"Проверка устройства: {key}")
@@ -436,8 +439,16 @@ async def check_and_correct_services(key: str):
         login_name = key.split(":", 1)[1]
         logger.debug(f"Проверка сервисов для логина: {login_name}")
 
-        sessions = await find_sessions_by_login(login_name)
+        sessions = await find_sessions_by_login(login_name, redis)
 
+        login_key = f"{RADIUS_LOGIN_PREFIX}{login_name}"
+        login_data = await search_redis(
+            redis,
+            query=login_key,
+            key_type="GET",
+            redis_key=login_key,
+        )
+        logger.debug(f"Данные логина из Redis для сравнения данных: {login_data}")
         for session in sessions:
             if not session.ERX_Service_Session:
                 continue
@@ -523,3 +534,6 @@ async def check_and_correct_services(key: str):
                         )
     else:
         logger.warning(f"Неизвестный тип ключа для проверки сервисов: {key}")
+        raise HTTPException(
+            status_code=400, detail="Unknown key type for service check"
+        )

@@ -150,13 +150,26 @@ async def execute_redis_command(redis_client, *args, timeout: float | None = Non
         raise
 
 
-async def execute_redis_pipeline(commands: list, timeout: float | None = None):
+async def execute_redis_pipeline(
+    commands: list, timeout: float | None = None, redis_client=None
+):
     """Выполнить пакет команд Redis через pipeline для повышения производительности"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
 
     try:
-        async with _redis_client._semaphore:
-            redis_client = await _redis_client.get_client()
+        if redis_client is None:
+            async with _redis_client._semaphore:
+                redis_client = await _redis_client.get_client()
+                pipe = redis_client.pipeline()
+
+                # Добавляем команды в pipeline
+                for cmd in commands:
+                    pipe.execute_command(*cmd)
+
+                # Выполняем весь пакет
+                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+        else:
+            # Используем переданный клиент
             pipe = redis_client.pipeline()
 
             # Добавляем команды в pipeline
