@@ -14,7 +14,7 @@ from services import auth, check_and_correct_services, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 
-log_dir = "/var/log/radius_core"
+log_dir = "/var/log/radius_core/"
 
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, "radius_log.log")
