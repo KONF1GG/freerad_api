@@ -1,11 +1,12 @@
 import asyncio
 import logging
+import json
 import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from annotated_types import T
+# from annotated_types import T  # unused
 from fastapi import HTTPException
 
 from config import RADIUS_LOGIN_PREFIX, RADIUS_SESSION_PREFIX
@@ -21,6 +22,7 @@ from crud import (
     save_session_to_redis,
     delete_session_from_redis,
     search_redis,
+    execute_redis_command,
     update_main_session_service,
 )
 from schemas import (
@@ -31,7 +33,7 @@ from schemas import (
     AuthResponse,
     SessionData,
 )
-from utils import nasportid_parse
+from utils import nasportid_parse, is_mac_username, mac_from_username
 
 logger = logging.getLogger(__name__)
 
@@ -519,110 +521,406 @@ async def auth(data: AuthRequest, redis=None) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+async def _find_duplicate_sessions_by_username_vlan(
+    username: str, vlan: str, current_session_id: str, redis
+) -> list[SessionData]:
+    """Найти дублирующие сессии по username + VLAN"""
+    duplicates = []
+    try:
+        if is_mac_username(username):
+            # Поиск по MAC + VLAN для MAC-адресов
+            mac = mac_from_username(username).replace(":", r"\:")
+            query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
+        else:
+            # Поиск по username + VLAN для обычных логинов
+            escaped_username = username.replace("-", r"\-")
+            query = f"@username:{{{escaped_username}}}@vlan:{{{vlan}}}"
+
+        result = await execute_redis_command(
+            redis, "FT.SEARCH", "idx:radius:session", query
+        )
+
+        if result and result[0] > 0:
+            num_results = result[0]
+            for i in range(num_results):
+                fields = result[2 + i * 2]
+                if isinstance(fields, list) and len(fields) >= 2 and fields[0] == "$":
+                    doc = fields[1]
+                    if isinstance(doc, bytes):
+                        doc = doc.decode("utf-8")
+                    try:
+                        session_dict = json.loads(doc)
+                        found_session = SessionData(**session_dict)
+                        found_uid = getattr(
+                            found_session, "Acct_Unique_Session_Id", None
+                        )
+
+                        # Исключаем текущую сессию
+                        if (
+                            found_uid
+                            and str(found_uid).strip()
+                            != str(current_session_id).strip()
+                        ):
+                            duplicates.append(found_session)
+                    except Exception as e:
+                        logger.warning(f"Не удалось разобрать документ сессии: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка при поиске дублей по username+VLAN: {e}", exc_info=True)
+
+    return duplicates
+
+
+async def _find_duplicate_sessions_by_onu_mac(
+    onu_mac: str, current_session_id: str, redis
+) -> list[SessionData]:
+    """Найти дублирующие сессии по ONU MAC"""
+    duplicates = []
+    try:
+        query = f"@onu_mac:{{{onu_mac}}}"
+        result = await execute_redis_command(
+            redis, "FT.SEARCH", "idx:radius:session", query
+        )
+
+        if result and result[0] > 0:
+            num_results = result[0]
+            for i in range(num_results):
+                fields = result[2 + i * 2]
+                if isinstance(fields, list) and len(fields) >= 2 and fields[0] == "$":
+                    doc_data = fields[1]
+                    if isinstance(doc_data, bytes):
+                        doc_data = doc_data.decode("utf-8")
+                    try:
+                        session_dict = json.loads(doc_data)
+                        found_session = SessionData(**session_dict)
+                        found_uid = getattr(
+                            found_session, "Acct_Unique_Session_Id", None
+                        )
+
+                        # Исключаем текущую сессию
+                        if (
+                            found_uid
+                            and str(found_uid).strip()
+                            != str(current_session_id).strip()
+                        ):
+                            duplicates.append(found_session)
+                    except Exception as e:
+                        logger.warning(f"Не удалось разобрать документ сессии: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка при поиске дублей по onu_mac: {e}", exc_info=True)
+
+    return duplicates
+
+
+async def _find_device_sessions_by_device_data(
+    device_ip: Optional[str], device_mac: Optional[str], device_id: str, redis
+) -> list[SessionData]:
+    """Найти сессии устройства, где IP или MAC не совпадают с ожидаемыми"""
+    duplicates = []
+    try:
+        # Поиск всех активных сессий устройства по device_id или IP
+        queries = []
+
+        # Поиск по IP устройства
+        if device_ip:
+            escaped_ip = device_ip.replace(".", r"\.")
+            queries.append(f"@Framed_IP_Address:{{{escaped_ip}}}")
+
+        # Поиск по ID устройства в username
+        if device_id:
+            queries.append(f"@User_Name:{{{device_id}}}")
+
+        # Поиск по MAC устройства
+        if device_mac:
+            escaped_mac = device_mac.replace(":", r"\:")
+            queries.append(f"@Calling_Station_Id:{{{escaped_mac}}}")
+
+        for query in queries:
+            result = await execute_redis_command(
+                redis, "FT.SEARCH", "idx:radius:session", query
+            )
+
+            if result and result[0] > 0:
+                num_results = result[0]
+                for i in range(num_results):
+                    fields = result[2 + i * 2]
+                    if (
+                        isinstance(fields, list)
+                        and len(fields) >= 2
+                        and fields[0] == "$"
+                    ):
+                        doc_data = fields[1]
+                        if isinstance(doc_data, bytes):
+                            doc_data = doc_data.decode("utf-8")
+                        try:
+                            session_dict = json.loads(doc_data)
+                            found_session = SessionData(**session_dict)
+                            session_ip = getattr(
+                                found_session, "Framed_IP_Address", None
+                            )
+                            session_mac = getattr(
+                                found_session, "Calling_Station_Id", None
+                            )
+                            session_username = getattr(found_session, "User_Name", None)
+
+                            # Проверяем, что данные не совпадают с ожидаемыми
+                            ip_mismatch = (
+                                device_ip and session_ip and session_ip != device_ip
+                            )
+                            mac_mismatch = (
+                                device_mac and session_mac and session_mac != device_mac
+                            )
+                            username_mismatch = (
+                                device_id
+                                and session_username
+                                and session_username != device_id
+                            )
+
+                            # Если есть несоответствие, считаем это дублирующей сессией
+                            if ip_mismatch or mac_mismatch or username_mismatch:
+                                duplicates.append(found_session)
+                                logger.debug(
+                                    f"Найдена конфликтующая сессия: ID={found_session.Acct_Unique_Session_Id}, "
+                                    f"IP={session_ip}(ожид.{device_ip}), MAC={session_mac}(ожид.{device_mac}), "
+                                    f"User={session_username}(ожид.{device_id})"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Не удалось разобрать документ сессии устройства: {e}"
+                            )
+    except Exception as e:
+        logger.error(f"Ошибка при поиске сессий устройства: {e}", exc_info=True)
+
+    return duplicates
+
+
+async def _kill_duplicate_sessions(sessions: list[SessionData], reason: str) -> None:
+    """Завершить список дублирующих сессий"""
+    tasks = []
+    for session in sessions:
+        session_id = getattr(session, "Acct_Unique_Session_Id", None)
+        if session_id:
+            logger.info(f"Завершаем дублирующую сессию: {session_id} ({reason})")
+            tasks.append(send_coa_session_kill(session.model_dump(by_alias=True)))
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _check_and_correct_service_state(
+    session: SessionData, login_data: Any, login_name: str
+) -> Optional[AccountingResponse]:
+    """Проверить и скорректировать состояние сервиса"""
+    if not session.ERX_Service_Session:
+        return None
+
+    # Получаем параметры услуги
+    timeto = getattr(
+        getattr(getattr(login_data, "servicecats", None), "internet", None),
+        "timeto",
+        None,
+    )
+    speed = getattr(
+        getattr(getattr(login_data, "servicecats", None), "internet", None),
+        "speed",
+        None,
+    )
+
+    # Проверяем срок действия услуги
+    now_timestamp = datetime.now(tz=timezone.utc).timestamp()
+    service_should_be_blocked = _check_service_expiry(timeto, now_timestamp)
+
+    # Анализируем состояние с роутера
+    router_says_blocked = "NOINET-NOMONEY" in session.ERX_Service_Session
+
+    # Сравниваем состояние с роутера с ожидаемым состоянием
+    if router_says_blocked and service_should_be_blocked:
+        logger.debug(f"Сервис корректно заблокирован для логина {login_name}")
+        return None
+
+    elif router_says_blocked and not service_should_be_blocked:
+        # Роутер заблокировал, но услуга должна работать - разблокируем
+        logger.warning(
+            f"Роутер неправильно заблокировал услугу для логина {login_name}, разблокировка"
+        )
+        if speed:
+            expected_speed_mb = float(speed) * 1.1
+            coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
+            await send_coa_session_set(session, coa_attributes)
+            return AccountingResponse(
+                action="update",
+                reason="router incorrectly blocked service, unblocked",
+                session_id=session.Acct_Unique_Session_Id,
+            )
+
+    elif not router_says_blocked and service_should_be_blocked:
+        # Роутер не заблокировал, но услуга должна быть заблокирована - блокируем
+        logger.warning(
+            f"Услуга для логина {login_name} должна быть заблокирована, но роутер этого не сделал"
+        )
+        await send_coa_session_kill(session)
+        return AccountingResponse(
+            action="kill",
+            reason="service expired",
+            session_id=session.Acct_Unique_Session_Id,
+        )
+    else:
+        # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
+        match = re.search(r"\(([\d.]+k)\)", session.ERX_Service_Session)
+        if match and speed:
+            service_speed_mb = float(match.group(1).replace("k", "")) / 1000  # k -> Mb
+            expected_speed_mb = float(speed) * 1.1
+
+            if abs(service_speed_mb - expected_speed_mb) >= 0.01:
+                logger.warning(
+                    f"Неправильная скорость для {login_name}: "
+                    f"ожидалось {expected_speed_mb} Mb, получено {service_speed_mb} Mb"
+                )
+                coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
+                await send_coa_session_set(session, coa_attributes)
+                return AccountingResponse(
+                    action="update",
+                    reason="speed mismatch corrected",
+                    session_id=session.Acct_Unique_Session_Id,
+                )
+    return None
+
+
 async def check_and_correct_services(key: str, redis=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
+
     if key.startswith("device:"):
-        logger.debug(f"Проверка устройства: {key}")
-        # TODO: Реализовать логику для устройств
-        return
+        device_id = key.split(":", 1)[1]
+        logger.debug(f"Проверка устройства: {device_id}")
+
+        # Получаем данные устройства из Redis
+        try:
+            device_data = await search_redis(
+                redis,
+                query=f"@login:{{{device_id}}}",
+                index="idx:device",
+            )
+
+            if not device_data:
+                logger.warning(f"Данные устройства {device_id} не найдены в Redis")
+                return
+
+            device_ip = getattr(device_data, "ipAddress", None)
+            device_mac = getattr(device_data, "mac", None)
+
+            logger.debug(
+                f"Данные устройства {device_id}: IP={device_ip}, MAC={device_mac}"
+            )
+
+            # Найти конфликтующие сессии
+            duplicate_sessions = await _find_device_sessions_by_device_data(
+                device_ip, device_mac, device_id, redis
+            )
+
+            if duplicate_sessions:
+                await _kill_duplicate_sessions(
+                    duplicate_sessions, f"device {device_id} IP/MAC mismatch"
+                )
+                logger.info(
+                    f"Завершено {len(duplicate_sessions)} конфликтующих сессий для устройства {device_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Ошибка при обработке устройства {device_id}: {e}", exc_info=True
+            )
 
     elif key.startswith("login:"):
         login_name = key.split(":", 1)[1]
         logger.debug(f"Проверка сервисов для логина: {login_name}")
 
-        sessions = await find_sessions_by_login(login_name, redis)
-
+        # Получаем сессии логина и данные логина
         login_key = f"{RADIUS_LOGIN_PREFIX}{login_name}"
-        login_data = await search_redis(
-            redis,
-            query=login_key,
-            key_type="GET",
-            redis_key=login_key,
-        )
-        logger.debug(f"Данные логина из Redis для сравнения данных: {login_data}")
+        try:
+            sessions, login_data = await asyncio.gather(
+                find_sessions_by_login(login_name, redis),
+                search_redis(
+                    redis, query=login_key, key_type="GET", redis_key=login_key
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Ошибка получения данных для {login_name}: {e}")
+            return
+
+        logger.debug(f"Найдено {len(sessions)} сессий для логина {login_name}")
+
+        # Собираем все задачи по поиску дубликатов
+        duplicate_search_tasks = []
+
         for session in sessions:
-            if not session.ERX_Service_Session:
-                continue
+            unique_id = session.Acct_Unique_Session_Id
+            username = session.User_Name
+            onu_mac = session.ADSL_Agent_Remote_Id
+            vlan = None
 
-            # Получаем параметры услуги
-            timeto = getattr(
-                getattr(getattr(login_data, "servicecats", None), "internet", None),
-                "timeto",
-                None,
-            )
-            speed = getattr(
-                getattr(getattr(login_data, "servicecats", None), "internet", None),
-                "speed",
-                None,
-            )
+            if session.NAS_Port_Id:
+                vlan = nasportid_parse(session.NAS_Port_Id).get("cvlan")
 
-            # Проверяем срок действия услуги
-            now_timestamp = datetime.now(tz=timezone.utc).timestamp()
-            service_should_be_blocked = _check_service_expiry(timeto, now_timestamp)
-
-            # Анализируем состояние с роутера
-            router_says_blocked = "NOINET-NOMONEY" in session.ERX_Service_Session
-
-            # Сравниваем состояние с роутера с ожидаемым состоянием
-            if router_says_blocked and service_should_be_blocked:
-                logger.debug(f"Сервис корректно заблокирован для логина {login_name}")
-
-            elif router_says_blocked and not service_should_be_blocked:
-                # Роутер заблокировал, но услуга должна работать - разблокируем
-                logger.warning(
-                    f"Роутер неправильно заблокировал услугу для логина {login_name}, разблокировка"
-                )
-
-                if speed:
-                    expected_speed_mb = float(speed) * 1.1
-                    coa_attributes = {
-                        "ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)
-                    }
-                    await send_coa_session_set(session, coa_attributes)
-
-                    return AccountingResponse(
-                        action="update",
-                        reason="router incorrectly blocked service, unblocked",
-                        session_id=session.Acct_Unique_Session_Id,
+            # Поиск дубликатов по username + VLAN
+            if username and vlan:
+                duplicate_search_tasks.append(
+                    _find_duplicate_sessions_by_username_vlan(
+                        username, vlan, unique_id, redis
                     )
-
-            elif not router_says_blocked and service_should_be_blocked:
-                # Роутер не заблокировал, но услуга должна быть заблокирована - блокируем
-                logger.warning(
-                    f"Услуга для логина {login_name} должна быть заблокирована, но роутер этого не сделал"
-                )
-                await send_coa_session_kill(session)
-
-                return AccountingResponse(
-                    action="kill",
-                    reason="service expired",
-                    session_id=session.Acct_Unique_Session_Id,
                 )
             else:
-                # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
-                match = re.search(r"\(([\d.]+k)\)", session.ERX_Service_Session)
-                if match and speed:
-                    service_speed_mb = (
-                        float(match.group(1).replace("k", "")) / 1000
-                    )  # k -> Mb
-                    expected_speed_mb = float(speed) * 1.1
+                # Создаем корутину, которая возвращает пустой список
+                async def empty_list():
+                    return []
 
-                    if abs(service_speed_mb - expected_speed_mb) >= 0.01:
-                        logger.warning(
-                            f"Неправильная скорость для {login_name}: "
-                            f"ожидалось {expected_speed_mb} Mb, получено {service_speed_mb} Mb"
-                        )
-                        # Обновляем параметры сессии
-                        coa_attributes = {
-                            "ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)
-                        }
-                        await send_coa_session_set(session, coa_attributes)
+                duplicate_search_tasks.append(empty_list())
 
-                        return AccountingResponse(
-                            action="update",
-                            reason="speed mismatch corrected",
-                            session_id=session.Acct_Unique_Session_Id,
-                        )
+            # Поиск дубликатов по ONU MAC
+            if onu_mac:
+                duplicate_search_tasks.append(
+                    _find_duplicate_sessions_by_onu_mac(onu_mac, unique_id, redis)
+                )
+            else:
+                # Создаем корутину, которая возвращает пустой список
+                async def empty_list():
+                    return []
+
+                duplicate_search_tasks.append(empty_list())
+
+        # Выполняем все поиски параллельно
+        if duplicate_search_tasks:
+            try:
+                duplicate_results = await asyncio.gather(
+                    *duplicate_search_tasks, return_exceptions=True
+                )
+
+                # Собираем все найденные дубликаты
+                all_duplicates = []
+                for result in duplicate_results:
+                    if not isinstance(result, Exception) and isinstance(result, list):
+                        all_duplicates.extend(result)
+
+                # Завершаем все дубликаты одним пакетом
+                if all_duplicates:
+                    await _kill_duplicate_sessions(
+                        all_duplicates, "login session duplicates"
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при поиске дубликатов: {e}", exc_info=True)
+
+        # Проверяем и корректируем состояние сервисов для каждой сессии
+        for session in sessions:
+            try:
+                correction_result = await _check_and_correct_service_state(
+                    session, login_data, login_name
+                )
+                if correction_result:
+                    return correction_result
+            except Exception as e:
+                logger.error(
+                    f"Ошибка при проверке сервиса для сессии {session.Acct_Unique_Session_Id}: {e}",
+                    exc_info=True,
+                )
+
     else:
         logger.warning(f"Неизвестный тип ключа для проверки сервисов: {key}")
         raise HTTPException(
