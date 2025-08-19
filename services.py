@@ -3,8 +3,9 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from annotated_types import T
 from fastapi import HTTPException
 
 from config import RADIUS_LOGIN_PREFIX, RADIUS_SESSION_PREFIX
@@ -98,6 +99,51 @@ async def send_coa_session_set(session_req, attributes: Dict[str, Any]) -> bool:
     return True
 
 
+async def _merge_and_close_session(
+    session_stored: Any,
+    session_req: Any,
+    redis_key: str,
+    redis,
+    event_time,
+    session_unique_id: str,
+    send_coa: bool = False,
+    log_msg: Optional[str] = None,
+    reason: str = "session closed",
+) -> AccountingResponse:
+    """Слить данные входящего пакета в существующиую сессию,
+    опционально отправить CoA kill и удалить сессию из Redis"""
+    # Merge models
+    session_stored_dict = session_stored.model_dump(by_alias=True)
+    session_req_dict = session_req.model_dump(by_alias=True)
+    session_stored_dict.update(session_req_dict)
+    session_to_close = SessionData(**session_stored_dict)
+
+    # Update timestamps
+    session_to_close.Acct_Stop_Time = event_time
+    session_to_close.Acct_Update_Time = event_time
+
+    tasks = [
+        ch_save_session(session_to_close, stoptime=True),
+        ch_save_traffic(session_to_close, session_stored),
+    ]
+
+    if send_coa:
+        tasks.append(send_coa_session_kill(session_stored.model_dump(by_alias=True)))
+
+    tasks.append(delete_session_from_redis(redis_key, redis))
+
+    await asyncio.gather(*tasks)
+
+    if log_msg:
+        logger.info(log_msg)
+    else:
+        logger.info(f"Сессия {session_unique_id} сохранена и завершена ({reason})")
+
+    return AccountingResponse(
+        action="kill", reason=reason, session_id=session_unique_id
+    )
+
+
 async def process_accounting(
     data: AccountingData, redis=None, rabbitmq=None
 ) -> AccountingResponse:
@@ -128,6 +174,9 @@ async def process_accounting(
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)
 
+        # Соединяем счетчики трафика
+        session_req = await process_traffic_data(session_req)
+
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
 
@@ -138,21 +187,63 @@ async def process_accounting(
                 logger.debug(f"Обработка сервисной сессии {session_id}")
                 await update_main_session_service(session_req, redis)
 
-        # Проверка смены логина
-        if (
-            session_stored
-            and login
-            and hasattr(login, "login")
-            and session_stored.login != login.login
-        ):
-            logger.warning(
-                f"Логин изменился с {session_stored.login} "
-                f"на {login.login}, завершение сессии"
-            )
-            await send_coa_session_kill(session_stored.model_dump(by_alias=True))
+        # Обработка завершения сессии при изменении логина или его отсутствии
+        if session_stored:
+            stored_login = getattr(session_stored, "login", None)
+            stored_auth_type = getattr(session_stored, "auth_type", None)
+            current_login = getattr(login, "login", None)
+            current_auth_type = getattr(login, "auth_type", None)
 
-        # Соединяем счетчики трафика
-        session_req = await process_traffic_data(session_req)
+            # 1. Нет логина, но сессия авторизована
+            if not login and stored_auth_type != "UNAUTH":
+                logger.warning(
+                    f"Сессия {session_unique_id} найдена авторизованная, но логин не найден."
+                )
+                return await _merge_and_close_session(
+                    session_stored,
+                    session_req,
+                    redis_key,
+                    redis,
+                    event_time,
+                    session_unique_id,
+                    send_coa=True,
+                    log_msg=f"Сессия {session_unique_id} завершена: login not found",
+                    reason="login not found, session closed",
+                )
+
+            # 2. Логин изменился
+            if login and stored_login != current_login:
+                logger.warning(
+                    f"Логин изменился с {stored_login} на {current_login}, завершаем сессию."
+                )
+                return await _merge_and_close_session(
+                    session_stored,
+                    session_req,
+                    redis_key,
+                    redis,
+                    event_time,
+                    session_unique_id,
+                    send_coa=True,
+                    log_msg=f"Сессия {session_unique_id} завершена: login mismatch",
+                    reason="login mismatch, session closed",
+                )
+
+            # 3. Сессия была UNAUTH, теперь авторизована
+            if stored_auth_type == "UNAUTH" and current_auth_type != "UNAUTH":
+                logger.info(
+                    f"Сессия {session_unique_id} была UNAUTH, теперь авторизована."
+                )
+                return await _merge_and_close_session(
+                    session_stored,
+                    session_req,
+                    redis_key,
+                    redis,
+                    event_time,
+                    session_unique_id,
+                    send_coa=True,
+                    log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
+                    reason="session UNAUTH closed (now authorized)",
+                )
 
         # Создаем или обновляем сессию
         if session_stored:
@@ -455,12 +546,12 @@ async def check_and_correct_services(key: str, redis=None):
 
             # Получаем параметры услуги
             timeto = getattr(
-                getattr(getattr(session, "servicecats", None), "internet", None),
+                getattr(getattr(login_data, "servicecats", None), "internet", None),
                 "timeto",
                 None,
             )
             speed = getattr(
-                getattr(getattr(session, "servicecats", None), "internet", None),
+                getattr(getattr(login_data, "servicecats", None), "internet", None),
                 "speed",
                 None,
             )
