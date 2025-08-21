@@ -218,4 +218,5 @@ if __name__ == "__main__":
         reload=False,
         access_log=True,  # HTTP логи в stdout для docker logs
         log_level="debug",
+        workers=3,
     )
