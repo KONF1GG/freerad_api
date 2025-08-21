@@ -426,7 +426,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "redis" },
     { name = "uvicorn" },
-    { name = "uvloop" },
+    { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
 [package.metadata]
@@ -440,7 +440,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "redis", specifier = ">=5.0.7" },
     { name = "uvicorn", specifier = ">=0.35.0" },
-    { name = "uvloop", specifier = ">=0.21.0" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
 ]
 
 [[package]]

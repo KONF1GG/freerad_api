@@ -13,6 +13,7 @@ from schemas import AccountingData, AccountingResponse, AuthRequest, CorrectRequ
 from services import auth, check_and_correct_services, process_accounting
 from redis_client import close_redis, redis_health_check
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
+
 from dependencies import RedisDependency, RabbitMQDependency
 
 log_dir = "/var/log/radius_core/"
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Radius Core service...")
     await close_redis()
     await close_rabbitmq()
+
 
 
 app = FastAPI(
@@ -187,11 +189,11 @@ async def do_auth(data: AuthRequest, redis: RedisDependency):
 
 # Эндпоинт для проверки включенных сервисов
 @app.post("/check_and_correct_services/", response_model=Dict)
-async def do_coa(data: CorrectRequest, redis: RedisDependency):
+async def do_coa(data: CorrectRequest, redis: RedisDependency, rabbitmq: RabbitMQDependency):
     """Обработка CoA (Change of Authorization) запроса"""
     logger.info(f"Processing CoA request for user: {data.key}")
     try:
-        result = await check_and_correct_services(data.key, redis)
+        result = await check_and_correct_services(data.key, redis, rabbitmq)
         logger.info(f"CoA request processed successfully for user: {data.key}")
         return result
     except HTTPException as http_exc:

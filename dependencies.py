@@ -7,6 +7,7 @@ from redis_client import get_redis
 from rabbitmq_client import get_rabbitmq_client
 
 
+
 async def get_redis_connection() -> AsyncGenerator[Redis, None]:
     """Получение подключения к Redis."""
     redis_client = await get_redis()
