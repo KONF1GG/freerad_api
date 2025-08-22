@@ -39,10 +39,15 @@ from utils import nasportid_parse, is_mac_username, mac_from_username
 logger = logging.getLogger(__name__)
 
 
-async def send_coa_to_queue(request_type: str, session_data: Dict[str, Any], rabbitmq, attributes: Dict[str, Any] = None) -> bool:
+async def send_coa_to_queue(
+    request_type: str,
+    session_data: Dict[str, Any],
+    rabbitmq,
+    attributes: Optional[Dict[str, Any]] = None,
+) -> bool:
     """
     Отправка CoA запроса в очередь RabbitMQ
-    
+
     Args:
         request_type: Тип запроса ("kill" или "update")
         session_data: Данные сессии
@@ -50,37 +55,35 @@ async def send_coa_to_queue(request_type: str, session_data: Dict[str, Any], rab
 
     """
     try:
-        
         # Объявляем очередь для CoA запросов
-        queue = await rabbitmq.declare_queue(
-            AMQP_COA_QUEUE,
-            durable=True
-        )
-        
+        queue = await rabbitmq.declare_queue(AMQP_COA_QUEUE, durable=True)
+
         # Формируем сообщение
         message_data = {
             "type": request_type,
             "session_data": session_data,
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            "request_id": f"{request_type}_{session_data.get('Acct_Session_Id', 'unknown')}_{int(time.time())}"
+            "request_id": f"{request_type}_{session_data.get('Acct_Session_Id', 'unknown')}_{int(time.time())}",
         }
-        
+
         # Добавляем атрибуты для update запросов
         if request_type == "update" and attributes:
             message_data["attributes"] = attributes
-        
+
         # Отправляем сообщение в очередь
         await rabbitmq.default_exchange.publish(
             aio_pika.Message(
                 body=json.dumps(message_data, ensure_ascii=False).encode(),
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=queue.name
+            routing_key=queue.name,
         )
-        
-        logger.debug(f"CoA запрос {request_type} отправлен в очередь для сессии {session_data.get('Acct_Session_Id', 'unknown')}")
+
+        logger.debug(
+            f"CoA запрос {request_type} отправлен в очередь для сессии {session_data.get('Acct_Session_Id', 'unknown')}"
+        )
         return True
-        
+
     except Exception as e:
         logger.error(f"Ошибка отправки CoA запроса в очередь: {e}", exc_info=True)
         return False
@@ -129,7 +132,7 @@ async def _save_auth_log(
         logger.error(f"Не удалось записать лог авторизации: {log_err}", exc_info=True)
 
 
-async def send_coa_session_kill(session_req, rabbitmq) -> bool:
+async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
     """
     Отправка команды на завершение сессии через CoA (в очередь)
     """
@@ -138,20 +141,29 @@ async def send_coa_session_kill(session_req, rabbitmq) -> bool:
 
         # Отправляем CoA kill запрос в очередь
         success = await send_coa_to_queue("kill", session_data, rabbitmq)
-        
+
         if success:
-            logger.info(f"CoA команда на завершение сессии отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}")
+            logger.info(
+                f"CoA команда на завершение сессии отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}"
+            )
         else:
-            logger.warning(f"CoA команда на завершение сессии не была отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}")
-        
+            logger.warning(
+                f"CoA команда на завершение сессии не была отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}"
+            )
+
         return success
-        
+
     except Exception as e:
-        logger.error(f"Ошибка отправки CoA команды на завершение сессии в очередь: {e}", exc_info=True)
+        logger.error(
+            f"Ошибка отправки CoA команды на завершение сессии в очередь: {e}",
+            exc_info=True,
+        )
         return False
 
 
-async def send_coa_session_set(session_req, rabbitmq, attributes: Dict[str, Any]) -> bool:
+async def send_coa_session_set(
+    session_req: SessionData, rabbitmq, attributes: Dict[str, Any]
+) -> bool:
     """
     Отправка команды на обновление атрибутов сессии через CoA (в очередь)
     """
@@ -160,7 +172,7 @@ async def send_coa_session_set(session_req, rabbitmq, attributes: Dict[str, Any]
 
         # Отправляем CoA update запрос в очередь
         success = await send_coa_to_queue("update", session_data, rabbitmq, attributes)
-        
+
         if success:
             logger.info(
                 f"CoA команда на обновление сессии отправлена в очередь: "
@@ -173,13 +185,13 @@ async def send_coa_session_set(session_req, rabbitmq, attributes: Dict[str, Any]
                 f"{session_data.get('Acct_Session_Id', 'unknown')}, "
                 f"атрибуты: {attributes}"
             )
-        
+
         return success
-        
+
     except Exception as e:
         logger.error(
-            f"Ошибка отправки CoA команды на обновление сессии в очередь: {e}", 
-            exc_info=True
+            f"Ошибка отправки CoA команды на обновление сессии в очередь: {e}",
+            exc_info=True,
         )
         return False
 
@@ -214,7 +226,9 @@ async def _merge_and_close_session(
     ]
 
     if send_coa:
-        tasks.append(send_coa_session_kill(session_stored.model_dump(by_alias=True), rabbitmq))
+        tasks.append(
+            send_coa_session_kill(session_stored.model_dump(by_alias=True), rabbitmq)
+        )
 
     tasks.append(delete_session_from_redis(redis_key, redis))
 
@@ -299,7 +313,7 @@ async def process_accounting(
                 )
 
             # 2. Логин изменился
-            if login and  stored_login and stored_login != current_login:
+            if login and stored_login and stored_login != current_login:
                 logger.warning(
                     f"Логин изменился с {stored_login} на {current_login}, завершаем сессию."
                 )
@@ -446,11 +460,11 @@ async def auth(data: AuthRequest, redis=None) -> Dict[str, Any]:
             auth_response.reply_framed_pool = "novlan"
             auth_response.reply_erx_virtual_router_name = "bng"
             auth_response.reply_erx_service_activate = "NOVLAN()"
-            auth_response.control_auth_type = {"value": "Reject"}
+            auth_response.control_auth_type = {"value": "Accept"}
 
             # Логируем попытку авторизации
-            await _save_auth_log(data, None, "Access-Reject", "User not found")
-            raise HTTPException(status_code=404, detail="User not found")
+            await _save_auth_log(data, None, "Access-Accept", "User not found")
+            return auth_response.to_radius()
 
         # Обычные пользователи (не видеокамеры)
         if login.auth_type != "VIDEO":
@@ -780,14 +794,16 @@ async def _find_device_sessions_by_device_data(
     return duplicates
 
 
-async def _kill_duplicate_sessions(sessions: list[SessionData], reason: str, rabbitmq=None) -> None:
+async def _kill_duplicate_sessions(
+    sessions: list[SessionData], reason: str, rabbitmq=None
+) -> None:
     """Завершить список дублирующих сессий"""
     tasks = []
     for session in sessions:
         session_id = getattr(session, "Acct_Unique_Session_Id", None)
         if session_id:
             logger.info(f"Завершаем дублирующую сессию: {session_id} ({reason})")
-            tasks.append(send_coa_session_kill(session.model_dump(by_alias=True), rabbitmq))
+            tasks.append(send_coa_session_kill(session, rabbitmq))
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
