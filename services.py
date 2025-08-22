@@ -5,8 +5,6 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-
-# from annotated_types import T  # unused
 from fastapi import HTTPException
 import aio_pika
 
@@ -63,7 +61,7 @@ async def send_coa_to_queue(
             "type": request_type,
             "session_data": session_data,
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            "request_id": f"{request_type}_{session_data.get('Acct_Session_Id', 'unknown')}_{int(time.time())}",
+            "request_id": f"{request_type}_{session_data.get('Acct-Session-Id', 'unknown')}_{int(time.time())}",
         }
 
         # Добавляем атрибуты для update запросов
@@ -80,7 +78,7 @@ async def send_coa_to_queue(
         )
 
         logger.debug(
-            f"CoA запрос {request_type} отправлен в очередь для сессии {session_data.get('Acct_Session_Id', 'unknown')}"
+            f"CoA запрос {request_type} отправлен в очередь для сессии {session_data.get('Acct-Session-Id', 'unknown')}"
         )
         return True
 
@@ -138,17 +136,18 @@ async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
     """
     try:
         session_data = session_req.model_dump(by_alias=True)
+        logger.debug(f"Данные сессии для отправки Coa kill: {session_data}")
 
         # Отправляем CoA kill запрос в очередь
         success = await send_coa_to_queue("kill", session_data, rabbitmq)
 
         if success:
             logger.info(
-                f"CoA команда на завершение сессии отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}"
+                f"CoA команда на завершение сессии отправлена в очередь: {session_data.get('Acct-Session-Id', 'unknown')}"
             )
         else:
             logger.warning(
-                f"CoA команда на завершение сессии не была отправлена в очередь: {session_data.get('Acct_Session_Id', 'unknown')}"
+                f"CoA команда на завершение сессии не была отправлена в очередь: {session_data.get('Acct-Session-Id', 'unknown')}"
             )
 
         return success
@@ -169,6 +168,7 @@ async def send_coa_session_set(
     """
     try:
         session_data = session_req.model_dump(by_alias=True)
+        logger.debug(f"Данные сессии для отправки Coa update: {session_data}")
 
         # Отправляем CoA update запрос в очередь
         success = await send_coa_to_queue("update", session_data, rabbitmq, attributes)
