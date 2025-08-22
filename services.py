@@ -226,9 +226,7 @@ async def _merge_and_close_session(
     ]
 
     if send_coa:
-        tasks.append(
-            send_coa_session_kill(session_stored.model_dump(by_alias=True), rabbitmq)
-        )
+        tasks.append(send_coa_session_kill(session_to_close, rabbitmq))
 
     tasks.append(delete_session_from_redis(redis_key, redis))
 
