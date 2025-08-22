@@ -299,9 +299,9 @@ async def process_accounting(
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored:
             stored_login = getattr(session_stored, "login", None)
-            stored_auth_type = getattr(session_stored, "auth_type", None)
+            stored_auth_type = getattr(session_stored, "auth_type", "UNAUTH")
             current_login = getattr(login, "login", None)
-            current_auth_type = getattr(login, "auth_type", None)
+            current_auth_type = getattr(login, "auth_type", "UNAUTH")
 
             # 1. Нет логина, но сессия авторизована
             if not login and stored_auth_type != "UNAUTH":
