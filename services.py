@@ -306,7 +306,7 @@ async def process_accounting(
             # 1. Нет логина, но сессия авторизована
             if not login and stored_auth_type != "UNAUTH":
                 logger.warning(
-                    f"Сессия {session_unique_id} найдена авторизованная, но логин не найден."
+                    f"Сессия {session_unique_id} найдена авторизованная, но логин не найден. "
                 )
                 return await _merge_and_close_session(
                     session_stored,
@@ -324,7 +324,7 @@ async def process_accounting(
             # 2. Логин изменился
             if login and stored_login and stored_login != current_login:
                 logger.warning(
-                    f"Логин изменился с {stored_login} на {current_login}, завершаем сессию."
+                    f"Логин изменился с {stored_login} на {current_login}, завершаем сессию. {session_unique_id}"
                 )
                 return await _merge_and_close_session(
                     session_stored,
@@ -341,8 +341,8 @@ async def process_accounting(
 
             # 3. Сессия была UNAUTH, теперь авторизована
             if stored_auth_type == "UNAUTH" and current_auth_type != "UNAUTH":
-                logger.info(
-                    f"Сессия {session_unique_id} была UNAUTH, теперь авторизована: {login}."
+                logger.warning(
+                    f"Сессия {session_unique_id} была UNAUTH, теперь авторизована: {login}. {session_unique_id}"
                 )
                 return await _merge_and_close_session(
                     session_stored,
