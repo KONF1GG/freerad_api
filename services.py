@@ -56,12 +56,20 @@ async def send_coa_to_queue(
         # Объявляем очередь для CoA запросов
         queue = await rabbitmq.declare_queue(AMQP_COA_QUEUE, durable=True)
 
+        # Создаем копию session_data с преобразованными datetime объектами
+        processed_session_data = {}
+        for key, value in session_data.items():
+            if isinstance(value, datetime):
+                processed_session_data[key] = value.isoformat()
+            else:
+                processed_session_data[key] = value
+
         # Формируем сообщение
         message_data = {
             "type": request_type,
-            "session_data": session_data,
+            "session_data": processed_session_data,
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            "request_id": f"{request_type}_{session_data.get('Acct-Session-Id', 'unknown')}_{int(time.time())}",
+            "request_id": f"{request_type}_{processed_session_data.get('Acct-Session-Id', 'unknown')}_{int(time.time())}",
         }
 
         # Добавляем атрибуты для update запросов
@@ -78,7 +86,7 @@ async def send_coa_to_queue(
         )
 
         logger.debug(
-            f"CoA запрос {request_type} отправлен в очередь для сессии {session_data.get('Acct-Session-Id', 'unknown')}"
+            f"CoA запрос {request_type} отправлен в очередь для сессии {processed_session_data.get('Acct-Session-Id', 'unknown')}"
         )
         return True
 
@@ -285,6 +293,9 @@ async def process_accounting(
                 logger.debug(f"Обработка сервисной сессии {session_id}")
                 await update_main_session_service(session_req, redis)
 
+        logger.debug(f"Данные старой записи сессии: {session_stored}")
+        logger.debug(f"Найденный логин: {login}")
+
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored:
             stored_login = getattr(session_stored, "login", None)
@@ -331,7 +342,7 @@ async def process_accounting(
             # 3. Сессия была UNAUTH, теперь авторизована
             if stored_auth_type == "UNAUTH" and current_auth_type != "UNAUTH":
                 logger.info(
-                    f"Сессия {session_unique_id} была UNAUTH, теперь авторизована."
+                    f"Сессия {session_unique_id} была UNAUTH, теперь авторизована: {login}."
                 )
                 return await _merge_and_close_session(
                     session_stored,
