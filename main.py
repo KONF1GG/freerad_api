@@ -2,11 +2,11 @@ import os
 import logging
 import asyncio
 from typing import Dict, Any
-import uvicorn
 import uvloop
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Info
 from contextlib import asynccontextmanager
 
 from config import PROMETHEUS_MULTIPROC_DIR
@@ -54,6 +54,10 @@ logging.getLogger("uvicorn").setLevel(logging.WARNING)
 # Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
+# Метрика для отслеживания воркеров
+worker_info = Info("radius_worker", "Information about radius worker process")
+worker_info.info({"pid": str(os.getpid())})
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,10 +71,15 @@ async def lifespan(app: FastAPI):
         if PROMETHEUS_MULTIPROC_DIR:
             import shutil
 
+            # Очищаем и создаем директорию для multiprocess метрик
             shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
-            os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+            os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
+
+            # Устанавливаем переменную окружения для prometheus_client
+            os.environ["prometheus_multiproc_dir"] = PROMETHEUS_MULTIPROC_DIR
+
             logger.info(
-                f"Prometheus multiprocess dir cleared: {PROMETHEUS_MULTIPROC_DIR}"
+                f"Prometheus multiprocess dir cleared and configured: {PROMETHEUS_MULTIPROC_DIR}"
             )
 
         # Health checks
@@ -101,8 +110,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-instrumentator = Instrumentator()
-instrumentator.instrument(app).expose(app)
+# Настройка Prometheus для multiprocess режима
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_group_untemplated=False,
+    excluded_handlers=["/metrics"],
+    should_instrument_requests_inprogress=True,
+    should_respect_env_var=True,
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="inprogress",
+    inprogress_labels=True,
+)
+
+# Инструментируем приложение, но НЕ экспонируем стандартный эндпоинт
+instrumentator.instrument(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,6 +133,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Кастомный эндпоинт для метрик с поддержкой multiprocess."""
+    from prometheus_client import CollectorRegistry, multiprocess, generate_latest
+    from fastapi import Response
+
+    if PROMETHEUS_MULTIPROC_DIR:
+        # Создаем новый registry для multiprocess
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)
+
+        # Генерируем метрики
+        metrics_data = generate_latest(registry)
+        return Response(content=metrics_data, media_type="text/plain")
+    else:
+        # Fallback на стандартные метрики если multiprocess не настроен
+        from prometheus_client import REGISTRY, generate_latest
+
+        return Response(content=generate_latest(REGISTRY), media_type="text/plain")
 
 
 @app.get("/health")
@@ -141,6 +184,7 @@ async def health_check() -> Dict[str, Any]:
 
     return {
         "status": status,
+        "worker_pid": os.getpid(),
         "services": {
             "redis": "ok" if redis_ok else "error",
             "rabbitmq": "ok" if rabbitmq_ok else "error",
