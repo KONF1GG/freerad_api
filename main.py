@@ -6,7 +6,6 @@ import uvloop
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_fastapi_instrumentator.metrics import latency
 from prometheus_client import (
     Info,
     CollectorRegistry,
@@ -15,13 +14,7 @@ from prometheus_client import (
     REGISTRY,
 )
 from contextlib import asynccontextmanager
-from prometheus_client import (
-    CollectorRegistry,
-    multiprocess,
-    generate_latest,
-    REGISTRY,
-)
-from fastapi import Response
+
 from config import PROMETHEUS_MULTIPROC_DIR
 from schemas import AccountingData, AccountingResponse, AuthRequest, CorrectRequest
 from services import auth, check_and_correct_services, process_accounting
@@ -183,46 +176,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Настройка Prometheus для multiprocess режима
-instrumentator = Instrumentator(
-    should_group_status_codes=False,
-    should_ignore_untemplated=True,
-    should_group_untemplated=False,
-    excluded_handlers=["/metrics"],
-    should_instrument_requests_inprogress=True,
-    should_respect_env_var=False,
-    inprogress_name="inprogress",
-    inprogress_labels=True,
-)
+# Настройка Prometheus - стандартные метрики
+instrumentator = Instrumentator()
 
-# Добавляем гистограмму времени ответа
-instrumentator.add(
-    latency(
-        metric_name="http_request_duration_highr_seconds",
-        metric_doc="Latency of HTTP requests by handler",
-        should_include_handler=True,
-        should_include_method=True,
-        should_include_status=True,
-        buckets=(
-            0.01,
-            0.025,
-            0.05,
-            0.075,
-            0.1,
-            0.25,
-            0.5,
-            0.75,
-            1.0,
-            2.5,
-            5.0,
-            7.5,
-            10.0,
-            float("inf"),
-        ),
-    )
-)
-
-# Инструментируем приложение, но НЕ экспонируем автоматический эндпоинт
+# Инструментируем приложение (БЕЗ expose, сделаем свой эндпоинт)
 instrumentator.instrument(app)
 
 app.add_middleware(
@@ -236,7 +193,7 @@ app.add_middleware(
 
 @app.get("/metrics")
 async def get_metrics():
-    """Стандартный эндпоинт для метрик с поддержкой multiprocess."""
+    """Эндпоинт для метрик с поддержкой multiprocess aggregation."""
 
     # Проверяем, доступен ли multiprocess режим
     multiprocess_available = (
@@ -251,7 +208,7 @@ async def get_metrics():
             registry = CollectorRegistry()
             multiprocess.MultiProcessCollector(registry)
 
-            # Генерируем метрики
+            # Генерируем агрегированные метрики со всех воркеров
             metrics_data = generate_latest(registry)
             return Response(content=metrics_data, media_type="text/plain")
         except Exception as e:
@@ -259,7 +216,7 @@ async def get_metrics():
                 f"Failed to collect multiprocess metrics: {e}. Falling back to single-process mode."
             )
 
-    # Fallback на стандартные метрики - используем глобальный registry
+    # Fallback на стандартные метрики если multiprocess не настроен
     metrics_data = generate_latest(REGISTRY)
     return Response(content=metrics_data, media_type="text/plain")
 
