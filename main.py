@@ -27,7 +27,6 @@ LOG_FILE = os.path.join(LOG_DIR, "radius_log.log")
 
 # Создаём директории
 os.makedirs(LOG_DIR, exist_ok=True)
-os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
 
 logger = logging.getLogger("radius_core")
 logger.setLevel(logging.DEBUG)
@@ -68,19 +67,47 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Radius Core service...")
 
     try:
+        logger.info(
+            f"Attempting to configure Prometheus multiprocess dir: {PROMETHEUS_MULTIPROC_DIR}"
+        )
+
         if PROMETHEUS_MULTIPROC_DIR:
             import shutil
 
-            # Очищаем и создаем директорию для multiprocess метрик
-            shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
-            os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
+            try:
+                # Проверяем текущие права доступа
+                parent_dir = os.path.dirname(PROMETHEUS_MULTIPROC_DIR)
+                logger.info(
+                    f"Parent directory: {parent_dir}, exists: {os.path.exists(parent_dir)}"
+                )
 
-            # Устанавливаем переменную окружения для prometheus_client
-            os.environ["prometheus_multiproc_dir"] = PROMETHEUS_MULTIPROC_DIR
+                # Очищаем и создаем директорию для multiprocess метрик
+                shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+                os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
 
-            logger.info(
-                f"Prometheus multiprocess dir cleared and configured: {PROMETHEUS_MULTIPROC_DIR}"
-            )
+                # Проверяем, что директория действительно создана
+                if os.path.exists(PROMETHEUS_MULTIPROC_DIR) and os.access(
+                    PROMETHEUS_MULTIPROC_DIR, os.W_OK
+                ):
+                    # Устанавливаем переменную окружения для prometheus_client
+                    os.environ["prometheus_multiproc_dir"] = PROMETHEUS_MULTIPROC_DIR
+
+                    logger.info(
+                        f"Prometheus multiprocess dir successfully configured: {PROMETHEUS_MULTIPROC_DIR}"
+                    )
+                else:
+                    raise OSError(
+                        f"Directory {PROMETHEUS_MULTIPROC_DIR} is not writable"
+                    )
+
+            except OSError as e:
+                logger.warning(
+                    f"Failed to create Prometheus multiprocess dir {PROMETHEUS_MULTIPROC_DIR}: {e}. "
+                    "Metrics will work in single-process mode."
+                )
+                # Отключаем multiprocess режим, удаляем переменную окружения
+                if "prometheus_multiproc_dir" in os.environ:
+                    del os.environ["prometheus_multiproc_dir"]
 
         # Health checks
         if not await redis_health_check():
@@ -141,19 +168,31 @@ async def get_metrics():
     from prometheus_client import CollectorRegistry, multiprocess, generate_latest
     from fastapi import Response
 
-    if PROMETHEUS_MULTIPROC_DIR:
-        # Создаем новый registry для multiprocess
-        registry = CollectorRegistry()
-        multiprocess.MultiProcessCollector(registry)
+    # Проверяем, доступен ли multiprocess режим
+    multiprocess_available = (
+        PROMETHEUS_MULTIPROC_DIR
+        and "prometheus_multiproc_dir" in os.environ
+        and os.path.exists(PROMETHEUS_MULTIPROC_DIR)
+    )
 
-        # Генерируем метрики
-        metrics_data = generate_latest(registry)
-        return Response(content=metrics_data, media_type="text/plain")
-    else:
-        # Fallback на стандартные метрики если multiprocess не настроен
-        from prometheus_client import REGISTRY, generate_latest
+    if multiprocess_available:
+        try:
+            # Создаем новый registry для multiprocess
+            registry = CollectorRegistry()
+            multiprocess.MultiProcessCollector(registry)
 
-        return Response(content=generate_latest(REGISTRY), media_type="text/plain")
+            # Генерируем метрики
+            metrics_data = generate_latest(registry)
+            return Response(content=metrics_data, media_type="text/plain")
+        except Exception as e:
+            logger.warning(
+                f"Failed to collect multiprocess metrics: {e}. Falling back to single-process mode."
+            )
+
+    # Fallback на стандартные метрики если multiprocess не настроен или недоступен
+    from prometheus_client import REGISTRY, generate_latest
+
+    return Response(content=generate_latest(REGISTRY), media_type="text/plain")
 
 
 @app.get("/health")

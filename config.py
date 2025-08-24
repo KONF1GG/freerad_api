@@ -25,5 +25,5 @@ RADIUS_LOGIN_PREFIX: str = "login:"
 RADIUS_INDEX_NAME: str = "idx:radius:login"
 
 PROMETHEUS_MULTIPROC_DIR: str = os.getenv(
-    "PROMETHEUS_MULTIPROC_DIR", "/tmp/prometheus_multiproc_dir"
+    "PROMETHEUS_MULTIPROC_DIR", "/app/prometheus_multiproc_dir"
 )
