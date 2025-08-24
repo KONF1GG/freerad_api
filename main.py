@@ -8,7 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Info
 from contextlib import asynccontextmanager
-
+from prometheus_client import (
+    CollectorRegistry,
+    multiprocess,
+    generate_latest,
+    REGISTRY,
+)
+from fastapi import Response
 from config import PROMETHEUS_MULTIPROC_DIR
 from schemas import AccountingData, AccountingResponse, AuthRequest, CorrectRequest
 from services import auth, check_and_correct_services, process_accounting
@@ -144,12 +150,12 @@ instrumentator = Instrumentator(
     should_group_untemplated=False,
     excluded_handlers=["/metrics"],
     should_instrument_requests_inprogress=True,
-    should_respect_env_var=False,  # Отключаем зависимость от переменной окружения
+    should_respect_env_var=False,
     inprogress_name="inprogress",
     inprogress_labels=True,
 )
 
-# Инструментируем приложение, но НЕ экспонируем стандартный эндпоинт
+# Инструментируем приложение, но НЕ экспонируем автоматический эндпоинт
 instrumentator.instrument(app)
 
 app.add_middleware(
@@ -163,9 +169,7 @@ app.add_middleware(
 
 @app.get("/metrics")
 async def get_metrics():
-    """Кастомный эндпоинт для метрик с поддержкой multiprocess."""
-    from prometheus_client import CollectorRegistry, multiprocess, generate_latest
-    from fastapi import Response
+    """Стандартный эндпоинт для метрик с поддержкой multiprocess."""
 
     # Проверяем, доступен ли multiprocess режим
     multiprocess_available = (
@@ -188,10 +192,9 @@ async def get_metrics():
                 f"Failed to collect multiprocess metrics: {e}. Falling back to single-process mode."
             )
 
-    # Fallback на стандартные метрики если multiprocess не настроен или недоступен
-    from prometheus_client import REGISTRY, generate_latest
-
-    return Response(content=generate_latest(REGISTRY), media_type="text/plain")
+    # Fallback на стандартные метрики - используем глобальный registry
+    metrics_data = generate_latest(REGISTRY)
+    return Response(content=metrics_data, media_type="text/plain")
 
 
 @app.get("/health")
