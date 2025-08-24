@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from typing import Dict
+from typing import Dict, Any
 import uvicorn
 import uvloop
 from fastapi import FastAPI, HTTPException
@@ -9,44 +9,47 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from contextlib import asynccontextmanager
 
+from config import PROMETHEUS_MULTIPROC_DIR
 from schemas import AccountingData, AccountingResponse, AuthRequest, CorrectRequest
 from services import auth, check_and_correct_services, process_accounting
-from redis_client import close_redis, redis_health_check
+from redis_client import (
+    close_redis,
+    redis_health_check,
+    _redis_client,
+)
 from rabbitmq_client import close_rabbitmq, rabbitmq_health_check
 
 from dependencies import RedisDependency, RabbitMQDependency
 
-log_dir = "/var/log/radius_core/"
+# Константы для удобства (логи, метрики)
+LOG_DIR = "/var/log/radius_core/"
+LOG_FILE = os.path.join(LOG_DIR, "radius_log.log")
 
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, "radius_log.log")
+# Создаём директории
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
 
-# Настройка логирования
+logger = logging.getLogger("radius_core")
+logger.setLevel(logging.DEBUG)
+
+# Форматтер
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-# Настройка корневого логгера для всего приложения
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.DEBUG)
-
-# Удаляем все существующие хендлеры
-for handler in root_logger.handlers[:]:
-    root_logger.removeHandler(handler)
-
-# Файловый хендлер для подробных логов приложения
-file_handler = logging.FileHandler(log_file)
+# Файловый хендлер
+file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setFormatter(formatter)
 file_handler.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
 
-# Добавляем файловый хендлер к корневому логгеру
-root_logger.addHandler(file_handler)
+# Консольный хендлер для stdout
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+console_handler.setLevel(logging.INFO)
+logger.addHandler(console_handler)
 
-# Отключаем логи библиотек в файле, но разрешаем критические ошибки
-logging.getLogger("aio_pika").setLevel(logging.ERROR)
-logging.getLogger("aiormq").setLevel(logging.ERROR)
-logging.getLogger("uvicorn").setLevel(logging.ERROR)
-
-# Получаем логгер для этого модуля
-logger = logging.getLogger(__name__)
+logging.getLogger("aio_pika").setLevel(logging.WARNING)
+logging.getLogger("aiormq").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
 
 # Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -54,40 +57,53 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Управление жизненным циклом приложения"""
+    """Управление жизненным циклом приложения.
+
+    Включает health checks, очистку метрик для multiprocess и graceful shutdown.
+    """
     logger.info("Starting Radius Core service...")
 
-    # Проверяем подключения при старте
-    if not await redis_health_check():
-        logger.error("Redis health check failed")
-    else:
-        logger.info("Redis connection established")
+    try:
+        if PROMETHEUS_MULTIPROC_DIR:
+            import shutil
 
-    if not await rabbitmq_health_check():
-        logger.error("RabbitMQ health check failed")
-    else:
-        logger.info("RabbitMQ connection established")
+            shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+            os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+            logger.info(
+                f"Prometheus multiprocess dir cleared: {PROMETHEUS_MULTIPROC_DIR}"
+            )
 
-    yield
+        # Health checks
+        if not await redis_health_check():
+            logger.error("Redis health check failed")
+            raise RuntimeError("Redis unavailable")
+        else:
+            logger.info("Redis connection established")
 
-    logger.info("Shutting down Radius Core service...")
-    await close_redis()
-    await close_rabbitmq()
+        if not await rabbitmq_health_check():
+            logger.error("RabbitMQ health check failed")
+            raise RuntimeError("RabbitMQ unavailable")
+        else:
+            logger.info("RabbitMQ connection established")
 
+        yield
+
+    finally:
+        logger.info("Shutting down Radius Core service...")
+        await close_redis()
+        await close_rabbitmq()
 
 
 app = FastAPI(
     title="Async Radius Microservice",
-    description="asynchronous RADIUS service",
+    description="Asynchronous RADIUS service",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Настройка автоматических метрик Prometheus
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app)
 
-# Добавляем CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -98,22 +114,30 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health_check():
-    """Проверка здоровья сервиса"""
+async def health_check() -> Dict[str, Any]:
+    """Проверка здоровья сервиса, включая статус подключений и Redis pool stats."""
     redis_ok = await redis_health_check()
     rabbitmq_ok = await rabbitmq_health_check()
 
     status = "healthy" if redis_ok and rabbitmq_ok else "unhealthy"
 
-    # Добавляем информацию о Redis семафоре
-    from redis_client import _redis_client
-
-    waiting_tasks = (
-        len(_redis_client._semaphore._waiters)
-        if _redis_client._semaphore._waiters
+    if _redis_client._semaphore._waiters:
+        waiting_tasks = (
+            len(_redis_client._semaphore._waiters)
+            if hasattr(_redis_client._semaphore, "_waiters")
+            else 0
+        )
+    semaphore_value = (
+        _redis_client._semaphore._value
+        if hasattr(_redis_client._semaphore, "_value")
         else 0
     )
-    semaphore_value = _redis_client._semaphore._value
+    if _redis_client._pool:
+        max_connections = (
+            _redis_client._pool.max_connections
+            if hasattr(_redis_client, "_pool")
+            else 0
+        )
 
     return {
         "status": status,
@@ -124,25 +148,25 @@ async def health_check():
         "redis_pool": {
             "available_permits": semaphore_value,
             "waiting_tasks": waiting_tasks,
-            "max_connections": _redis_client._pool.max_connections
-            if _redis_client._pool
-            else 0,
+            "max_connections": max_connections,
         },
     }
 
 
 @app.get("/")
-async def root():
-    """Корневой эндпоинт"""
+async def root() -> Dict[str, str]:
+    """Корневой эндпоинт для проверки статуса сервиса."""
     return {"service": "Radius Core", "version": "1.0.0", "status": "running"}
 
 
-# Основной эндпоинт аккаунтинга
 @app.post("/acct/", response_model=AccountingResponse)
 async def do_acct(
     data: AccountingData, redis: RedisDependency, rabbitmq: RabbitMQDependency
-):
-    """Обработка RADIUS Accounting запросов"""
+) -> AccountingResponse:
+    """Обработка RADIUS Accounting запросов.
+
+    Пример: POST с AccountingData -> возвращает AccountingResponse.
+    """
     logger.info(f"Processing accounting request for session: {data.Acct_Session_Id}")
     try:
         result = await process_accounting(data, redis, rabbitmq)
@@ -150,11 +174,7 @@ async def do_acct(
             f"Accounting request processed successfully for session: {data.Acct_Session_Id}"
         )
         return result
-    except HTTPException as http_exc:
-        logger.error(
-            f"HTTP error processing accounting request for session {data.Acct_Session_Id}: {http_exc}",
-            exc_info=True,
-        )
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(
@@ -164,59 +184,56 @@ async def do_acct(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-# Основной эндпоинт авторизации
-@app.post("/authorize/", response_model=Dict)
-async def do_auth(data: AuthRequest, redis: RedisDependency):
-    """Авторизация пользователя"""
+@app.post("/authorize/", response_model=Dict[str, Any])
+async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
+    """Авторизация пользователя.
+
+    Пример: POST с AuthRequest -> возвращает dict с результатом.
+    """
     logger.info(f"Processing auth request for user: {data.User_Name}")
     try:
         result = await auth(data, redis)
         logger.info(f"Auth request processed successfully for user: {data.User_Name}")
         return result
-    except HTTPException as http_exc:
-        logger.error(
-            f"HTTP error processing authentication request for user {data.User_Name}: {http_exc}",
-            exc_info=True,
-        )
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(
             f"Error processing authentication request for user {data.User_Name}: {e}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-# Эндпоинт для проверки включенных сервисов
-@app.post("/check_and_correct_services/", response_model=Dict)
-async def do_coa(data: CorrectRequest, redis: RedisDependency, rabbitmq: RabbitMQDependency):
-    """Обработка CoA (Change of Authorization) запроса"""
+@app.post("/check_and_correct_services/", response_model=Dict[str, Any])
+async def do_coa(
+    data: CorrectRequest, redis: RedisDependency, rabbitmq: RabbitMQDependency
+):
+    """Обработка CoA (Change of Authorization) запроса.
+
+    Пример: POST с CorrectRequest -> возвращает dict с результатом.
+    """
     logger.info(f"Processing CoA request for user: {data.key}")
     try:
         result = await check_and_correct_services(data.key, redis, rabbitmq)
         logger.info(f"CoA request processed successfully for user: {data.key}")
         return result
-    except HTTPException as http_exc:
-        logger.error(
-            f"HTTP error processing CoA request for user {data.key}: {http_exc}",
-            exc_info=True,
-        )
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"Error processing CoA request for user {data.key}: {e}",
-            exc_info=True,
+            f"Error processing CoA request for user {data.key}: {e}", exc_info=True
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        access_log=True,  # HTTP логи в stdout для docker logs
-        log_level="debug",
-        workers=3,
-    )
+# if __name__ == "__main__":
+#     uvicorn.run(
+#         "main:app",
+#         host="0.0.0.0",
+#         port=8000,
+#         reload=False,
+#         access_log=True,
+#         log_level="debug",
+#         workers=3,
+#     )
