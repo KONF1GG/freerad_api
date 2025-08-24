@@ -3,11 +3,17 @@ import logging
 import asyncio
 from typing import Dict, Any
 import uvloop
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator.metrics import latency
-from prometheus_client import Info
+from prometheus_client import (
+    Info,
+    CollectorRegistry,
+    multiprocess,
+    generate_latest,
+    REGISTRY,
+)
 from contextlib import asynccontextmanager
 from prometheus_client import (
     CollectorRegistry,
@@ -60,6 +66,20 @@ logging.getLogger("uvicorn").setLevel(logging.WARNING)
 # Установка политики событийного цикла для ускорения
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
+# Инициализация Prometheus multiprocess режима ДО создания метрик
+if PROMETHEUS_MULTIPROC_DIR:
+    import stat
+
+    os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
+    try:
+        os.chmod(PROMETHEUS_MULTIPROC_DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+        os.environ["prometheus_multiproc_dir"] = PROMETHEUS_MULTIPROC_DIR
+        logger.info(
+            f"Prometheus multiprocess dir pre-configured: {PROMETHEUS_MULTIPROC_DIR}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to pre-configure multiprocess dir: {e}")
+
 # Метрика для отслеживания воркеров
 worker_info = Info("radius_worker", "Information about radius worker process")
 worker_info.info({"pid": str(os.getpid())})
@@ -79,7 +99,7 @@ async def lifespan(app: FastAPI):
         )
 
         if PROMETHEUS_MULTIPROC_DIR:
-            import shutil
+            import stat
 
             try:
                 # Проверяем текущие права доступа
@@ -88,9 +108,13 @@ async def lifespan(app: FastAPI):
                     f"Parent directory: {parent_dir}, exists: {os.path.exists(parent_dir)}"
                 )
 
-                # Очищаем и создаем директорию для multiprocess метрик
-                shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+                # Создаем директорию для multiprocess метрик (НЕ очищаем существующую)
                 os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
+
+                # Устанавливаем права на запись для всех процессов
+                os.chmod(
+                    PROMETHEUS_MULTIPROC_DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
+                )
 
                 # Проверяем, что директория действительно создана
                 if os.path.exists(PROMETHEUS_MULTIPROC_DIR) and os.access(
@@ -133,6 +157,21 @@ async def lifespan(app: FastAPI):
 
     finally:
         logger.info("Shutting down Radius Core service...")
+
+        # Безопасная очистка Prometheus multiprocess метрик для текущего процесса
+        try:
+            if "prometheus_multiproc_dir" in os.environ:
+                from prometheus_client import multiprocess
+                from prometheus_client import CollectorRegistry
+
+                # Создаем временный registry для финальной очистки
+                registry = CollectorRegistry()
+                multiprocess.MultiProcessCollector(registry)
+
+                logger.info("Prometheus multiprocess metrics cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning up Prometheus metrics: {e}")
+
         await close_redis()
         await close_rabbitmq()
 
