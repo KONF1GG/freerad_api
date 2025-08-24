@@ -176,8 +176,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Настройка Prometheus - стандартные метрики
-instrumentator = Instrumentator()
+# Настройка Prometheus - с включением handler в лейблы
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_group_untemplated=False,
+    excluded_handlers=["/metrics", "/health", "/"],
+    should_instrument_requests_inprogress=True,
+    should_respect_env_var=False,
+    inprogress_name="inprogress",
+    inprogress_labels=True,
+)
 
 # Инструментируем приложение (БЕЗ expose, сделаем свой эндпоинт)
 instrumentator.instrument(app)
