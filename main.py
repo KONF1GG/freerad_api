@@ -144,8 +144,7 @@ instrumentator = Instrumentator(
     should_group_untemplated=False,
     excluded_handlers=["/metrics"],
     should_instrument_requests_inprogress=True,
-    should_respect_env_var=True,
-    env_var_name="ENABLE_METRICS",
+    should_respect_env_var=False,  # Отключаем зависимость от переменной окружения
     inprogress_name="inprogress",
     inprogress_labels=True,
 )
