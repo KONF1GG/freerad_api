@@ -6,6 +6,7 @@ import uvloop
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator.metrics import latency
 from prometheus_client import Info
 from contextlib import asynccontextmanager
 from prometheus_client import (
@@ -153,6 +154,33 @@ instrumentator = Instrumentator(
     should_respect_env_var=False,
     inprogress_name="inprogress",
     inprogress_labels=True,
+)
+
+# Добавляем гистограмму времени ответа
+instrumentator.add(
+    latency(
+        metric_name="http_request_duration_highr_seconds",
+        metric_doc="Latency of HTTP requests by handler",
+        should_include_handler=True,
+        should_include_method=True,
+        should_include_status=True,
+        buckets=(
+            0.01,
+            0.025,
+            0.05,
+            0.075,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            2.5,
+            5.0,
+            7.5,
+            10.0,
+            float("inf"),
+        ),
+    )
 )
 
 # Инструментируем приложение, но НЕ экспонируем автоматический эндпоинт
