@@ -94,7 +94,6 @@ async def search_redis(
             if not result:
                 logger.debug("No results for %s key: %s", key_type, redis_key)
                 return None
-            # JSON.GET уже возвращает Python объект, не нужно парсить
             parsed_data = result
         else:
             logger.error("Unsupported key_type: %s", key_type)

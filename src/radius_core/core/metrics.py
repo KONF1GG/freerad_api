@@ -22,8 +22,9 @@ from prometheus_client import (
     multiprocess,
     generate_latest,
     REGISTRY,
+    Gauge,
 )
-from fastapi import Response
+from fastapi import Response, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,13 @@ class MetricsManager:
             "http_requests_total",
             "Total HTTP requests",
             ["method", "endpoint", "status_code"],
+        )
+
+        # Метрики для in-progress запросов
+        self.http_requests_inprogress = Gauge(
+            "http_requests_inprogress",
+            "HTTP requests currently being processed",
+            ["method", "endpoint"],
         )
 
         # Метрики для RPS (Requests Per Second)
@@ -337,17 +345,30 @@ class MetricsManager:
             async def async_wrapper(*args, **kwargs):
                 start_time = time.time()
                 status_code = 200
+                func_method = method or "GET"
+                func_endpoint = endpoint or func.__name__
+
+                # Увеличиваем счетчик in-progress запросов
+                self.http_requests_inprogress.labels(
+                    method=func_method, endpoint=func_endpoint
+                ).inc()
+
                 try:
                     result = await func(*args, **kwargs)
                     return result
+                except HTTPException as e:
+                    status_code = e.status_code
+                    raise
                 except Exception:
                     status_code = 500
                     raise
                 finally:
                     duration = time.time() - start_time
-                    # Определяем метод и endpoint из функции
-                    func_method = method or "GET"
-                    func_endpoint = endpoint or func.__name__
+
+                    # Уменьшаем счетчик in-progress запросов
+                    self.http_requests_inprogress.labels(
+                        method=func_method, endpoint=func_endpoint
+                    ).dec()
 
                     self.http_request_duration.labels(
                         method=func_method,
@@ -364,17 +385,30 @@ class MetricsManager:
             def sync_wrapper(*args, **kwargs):
                 start_time = time.time()
                 status_code = 200
+                func_method = method or "GET"
+                func_endpoint = endpoint or func.__name__
+
+                # Увеличиваем счетчик in-progress запросов
+                self.http_requests_inprogress.labels(
+                    method=func_method, endpoint=func_endpoint
+                ).inc()
+
                 try:
                     result = func(*args, **kwargs)
                     return result
+                except HTTPException as e:
+                    status_code = e.status_code
+                    raise
                 except Exception:
                     status_code = 500
                     raise
                 finally:
                     duration = time.time() - start_time
-                    # Определяем метод и endpoint из функции
-                    func_method = method or "GET"
-                    func_endpoint = endpoint or func.__name__
+
+                    # Уменьшаем счетчик in-progress запросов
+                    self.http_requests_inprogress.labels(
+                        method=func_method, endpoint=func_endpoint
+                    ).dec()
 
                     self.http_request_duration.labels(
                         method=func_method,
@@ -401,3 +435,4 @@ metrics_manager = MetricsManager()
 
 # Удобные алиасы для декораторов
 track_function = metrics_manager.track_function
+track_http_request = metrics_manager.track_http_request

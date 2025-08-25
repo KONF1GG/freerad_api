@@ -23,7 +23,7 @@ from ..clients import redis_health_check, redis_client
 from ..clients import rabbitmq_health_check
 
 from ..core.dependencies import RedisDependency, RabbitMQDependency
-from ..core.metrics import metrics_manager, track_function
+from ..core.metrics import metrics_manager, track_function, track_http_request
 from ..config import PROMETHEUS_MULTIPROC_DIR
 
 logger = logging.getLogger(__name__)
@@ -32,12 +32,14 @@ router = APIRouter()
 
 
 @router.get("/metrics")
+@track_http_request(method="GET", endpoint="/metrics")
 async def get_metrics():
     """Эндпоинт для метрик с поддержкой multiprocess aggregation."""
     return await metrics_manager.get_metrics(PROMETHEUS_MULTIPROC_DIR)
 
 
 @router.get("/health")
+@track_http_request(method="GET", endpoint="/health")
 async def health_check() -> Dict[str, Any]:
     """Проверка здоровья сервиса, включая статус подключений и Redis pool stats."""
 
@@ -82,6 +84,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @router.get("/")
+@track_http_request(method="GET", endpoint="/")
 async def root() -> Dict[str, str]:
     """Корневой эндпоинт для проверки статуса сервиса."""
     return {"service": "Radius Core", "version": "1.0.0", "status": "running"}
@@ -89,6 +92,7 @@ async def root() -> Dict[str, str]:
 
 @router.post("/acct/", response_model=AccountingResponse)
 @track_function("radius", "acct")
+@track_http_request(method="POST", endpoint="/acct/")
 async def do_acct(
     data: AccountingData, redis: RedisDependency, rabbitmq: RabbitMQDependency
 ) -> AccountingResponse:
@@ -115,6 +119,7 @@ async def do_acct(
 
 @router.post("/authorize/", response_model=Dict[str, Any])
 @track_function("radius", "auth")
+@track_http_request(method="POST", endpoint="/authorize/")
 async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
     """Авторизация пользователя."""
     logger.info("Обработка запроса авторизации для пользователя: %s", data.User_Name)
@@ -138,6 +143,7 @@ async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
 
 @router.post("/check_and_correct_services/", response_model=Dict[str, Any])
 @track_function("radius", "coa")
+@track_http_request(method="POST", endpoint="/check_and_correct_services/")
 async def do_coa(
     data: CorrectRequest, redis: RedisDependency, rabbitmq: RabbitMQDependency
 ):

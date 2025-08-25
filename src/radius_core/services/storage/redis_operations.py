@@ -25,8 +25,8 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
             logger.debug("No session data found for key: %s", redis_key)
             return None
 
-        parsed_data = json.loads(session_data)
-        session = SessionData(**parsed_data)
+        # JSON.GET уже возвращает Python объект, не нужно парсить
+        session = SessionData(**session_data)
         logger.debug("Successfully retrieved session for key: %s", redis_key)
         return session
 
