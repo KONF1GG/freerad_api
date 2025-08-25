@@ -1,12 +1,14 @@
-from datetime import datetime, timezone
-from dateutil import parser
+"""
+Модуль для вспомогательных функций.
+"""
+
 import re
 import logging
 from typing import Dict, Any, Tuple, Union
+from datetime import datetime, timezone
+from dateutil import parser
 
-logger = logging.getLogger(__name__)
-
-EVENT_FMT = "%b %d %Y %H:%M:%S +05"
+logger = logging.getLogger("radius_core")
 
 
 def parse_event(ts: str | datetime | dict) -> datetime:
@@ -25,20 +27,22 @@ def parse_event(ts: str | datetime | dict) -> datetime:
         elif isinstance(ts, str):
             dt = parser.parse(ts)
         else:
-            logger.error(f"Unsupported type for event timestamp: {type(ts)}")
+            logger.error("Unsupported type for event timestamp: %s", type(ts))
             dt = datetime.now(timezone.utc)
-    except Exception as e:
-        logger.error(f"Failed to parse event timestamp '{ts}': {e}")
+    except (ValueError, TypeError, OSError) as e:
+        logger.error("Failed to parse event timestamp '%s': %s", ts, e)
         dt = datetime.now(timezone.utc)
     dt_utc = dt.astimezone(timezone.utc)
     return dt_utc
 
 
 def now_str() -> str:
+    """Возвращает текущую дату и время в формате YYYY-MM-DD HH:MM:SS"""
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def nasportid_parse(nasportid: str) -> Dict[str, str]:
+    """Парсит nasportid в словарь"""
     m = re.match(
         r"^(?P<psiface>ps\d+)\.\d+\:(?P<svlan>\d+)\-?(?P<cvlan>\d+)?$",
         nasportid,
@@ -47,6 +51,7 @@ def nasportid_parse(nasportid: str) -> Dict[str, str]:
 
 
 def is_mac_username(username: str) -> bool:
+    """Проверяет, является ли username MAC-адресом"""
     return bool(re.match(r"^([0-9a-f]{4}\.){2}([0-9a-f]{4})$", username))
 
 
@@ -86,6 +91,7 @@ PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
 
 
 def mac_from_hex(hex_var: str) -> str:
+    """Преобразует hex в MAC-адрес"""
     hex_var = hex_var.lower()
     for prefix, (offset, template, sep, need_decode) in PREFIX_MAP.items():
         if hex_var.startswith(prefix):
@@ -117,11 +123,13 @@ def extract_speed_k(service_str: str) -> float:
 
 
 def is_service_blocked(timeto: str | datetime) -> bool:
+    """Проверяет, истекло ли время доступа"""
     dt = parse_event(timeto)
     return dt < datetime.now(timezone.utc)
 
 
 def check_session_limit(login: str, sessions: list, limit: int = 2) -> tuple[str, str]:
+    """Проверяет, не превышено ли количество сессий для пользователя"""
     if len(sessions) >= limit:
         return "Reject", f"Session count over limit: {len(sessions)}"
     return "Accept", "OK"

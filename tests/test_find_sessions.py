@@ -1,6 +1,12 @@
 import asyncio
-from crud import find_sessions_by_login
-from redis_client import get_redis
+import sys
+import os
+
+# Добавляем src в путь для импорта
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from radius_core.services import find_sessions_by_login
+from radius_core.clients import get_redis
 
 
 async def main():
@@ -13,4 +19,5 @@ async def main():
         )
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

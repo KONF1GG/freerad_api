@@ -1,23 +1,31 @@
-import redis.asyncio as redis
+"""
+Модуль для работы с Redis.
+
+Содержит класс RedisClient для работы с Redis,
+а также функции для получения соединения, закрытия соединения и проверки здоровья соединения.
+"""
+
 import asyncio
 import logging
-from typing import Optional
 from contextlib import asynccontextmanager
-from config import (
+from typing import Optional
+
+import redis.asyncio as redis
+from redis.retry import Retry
+from redis.backoff import ExponentialBackoff
+from ..config import (
     REDIS_URL,
     REDIS_POOL_SIZE,
     REDIS_CONCURRENCY,
     REDIS_COMMAND_TIMEOUT,
-    REDIS_WARNING_THRESHOLD,
 )
 
-from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("radius_core")
 
 
 class RedisClient:
+    """Класс для работы с Redis"""
+
     def __init__(self):
         self._pool: Optional[redis.ConnectionPool] = None
         self._redis: Optional[redis.Redis] = None
@@ -50,9 +58,9 @@ class RedisClient:
                         self._redis = redis.Redis(connection_pool=self._pool)
                         # Проверяем соединение
                         await self._redis.ping()
-                        logger.info("Redis connection established successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to connect to Redis: {e}")
+                        logger.info("Соединение с Redis успешно установлено")
+                    except Exception:
+                        logger.error("Не удалось установить соединение с Redis")
                         raise
         return self._redis
 
@@ -73,25 +81,30 @@ class RedisClient:
             # Логируем информацию о пуле соединений
             if self._pool:
                 logger.debug(
-                    f"Redis pool max_connections: {self._pool.max_connections}"
+                    "Redis pool max_connections: %s", self._pool.max_connections
                 )
             return True
-        except Exception as e:
-            logger.error(f"Redis health check failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            logger.error("Проверка здоровья соединения с Redis не прошла: %s", e)
             return False
+
+    @property
+    def semaphore(self):
+        """Получить семафор для ограничения одновременных операций"""
+        return self._semaphore
 
 
 # Глобальный экземпляр клиента
-_redis_client = RedisClient()
+redis_client = RedisClient()
 
 
 @asynccontextmanager
 async def get_redis_connection():
     """Контекстный менеджер для получения Redis соединения с ограничением одновременных операций"""
-    async with _redis_client._semaphore:
-        redis_client = await _redis_client.get_client()
+    async with redis_client.semaphore:
+        redis_client_conn = await redis_client.get_client()
         try:
-            yield redis_client
+            yield redis_client_conn
         finally:
             # Соединение возвращается в пул автоматически
             pass
@@ -100,9 +113,9 @@ async def get_redis_connection():
 @asynccontextmanager
 async def get_redis_connection_optimized():
     """Оптимизированный контекстный менеджер для пакетных операций"""
-    redis_client = await _redis_client.get_client()
+    redis_client_conn = await redis_client.get_client()
     try:
-        yield redis_client
+        yield redis_client_conn
     finally:
         # Соединение возвращается в пул автоматически
         pass
@@ -110,43 +123,36 @@ async def get_redis_connection_optimized():
 
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
-    waiting_tasks = (
-        len(_redis_client._semaphore._waiters)
-        if _redis_client._semaphore._waiters
-        else 0
-    )
-    if waiting_tasks > REDIS_WARNING_THRESHOLD:
-        logger.warning(
-            f"High Redis connection contention: {waiting_tasks} tasks waiting"
-        )
 
-    return await _redis_client.get_client()
+    return await redis_client.get_client()
 
 
 async def close_redis():
     """Закрыть Redis соединение"""
-    await _redis_client.close()
+    await redis_client.close()
 
 
 async def redis_health_check() -> bool:
     """Проверка здоровья Redis"""
-    return await _redis_client.health_check()
+    return await redis_client.health_check()
 
 
 async def execute_redis_command(redis_client, *args, timeout: float | None = None):
     """Выполнить команду Redis с тайм-аутом"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
     try:
-        async with _redis_client._semaphore:
+        async with redis_client.semaphore:
             result = await asyncio.wait_for(
                 redis_client.execute_command(*args), timeout=eff_timeout
             )
         return result
     except asyncio.TimeoutError:
-        logger.error(f"Redis command timeout after {eff_timeout}s: {args[0]}")
+        logger.error(
+            "Redis команда завершилась с тайм-аутом: %s: %s", eff_timeout, args[0]
+        )
         raise
     except Exception as e:
-        logger.error(f"Redis command error: {e}")
+        logger.error("Redis команда завершилась с ошибкой: %s", e)
         raise
 
 
@@ -158,9 +164,9 @@ async def execute_redis_pipeline(
 
     try:
         if redis_client is None:
-            async with _redis_client._semaphore:
-                redis_client = await _redis_client.get_client()
-                pipe = redis_client.pipeline()
+            async with redis_client.semaphore:
+                redis_client_conn = await redis_client.get_client()
+                pipe = redis_client_conn.pipeline()
 
                 # Добавляем команды в pipeline
                 for cmd in commands:
@@ -181,8 +187,8 @@ async def execute_redis_pipeline(
 
         return result
     except asyncio.TimeoutError:
-        logger.error(f"Redis pipeline timeout after {eff_timeout}s")
+        logger.error("Redis pipeline завершилась с тайм-аутом: %s", eff_timeout)
         raise
     except Exception as e:
-        logger.error(f"Redis pipeline error: {e}")
+        logger.error("Redis pipeline завершилась с ошибкой: %s", e)
         raise

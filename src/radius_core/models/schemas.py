@@ -1,14 +1,19 @@
-from unittest.mock import Base
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, ConfigDict
-from typing import Optional, Dict, Any, Literal, Union
-from utils import parse_event
+"""Модели для работы с данными RADIUS."""
+
 import logging
 from datetime import datetime, timezone
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+from ..utils import parse_event
 
 logger = logging.getLogger(__name__)
 
 
 class BaseAccountingData(BaseModel):
+    """Базовая модель для данных учета."""
+
     Acct_Session_Id: str = Field(..., alias="Acct-Session-Id")
     Acct_Status_Type: str = Field("UNKNOWN", alias="Acct-Status-Type")
     Event_Timestamp: datetime = Field(
@@ -68,7 +73,7 @@ class BaseAccountingData(BaseModel):
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+    def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
@@ -91,7 +96,7 @@ class BaseAccountingData(BaseModel):
         "ERX_IPv6_Acct_Output_Octets",
         mode="before",
     )
-    def safe_int(cls, value: Any, info: ValidationInfo) -> int:
+    def safe_int(cls: type, value: Any, info: ValidationInfo) -> int:
         """Безопасное преобразование в int из любого типа."""
         # Если None или пустая строка — 0
         if value is None or value == "":
@@ -110,7 +115,7 @@ class BaseAccountingData(BaseModel):
                 return int(value)
             except ValueError:
                 logger.warning(
-                    f"Invalid string for {info.field_name}: '{value}', using 0"
+                    "Invalid string for %s: '%s', using 0", info.field_name, value
                 )
                 return 0
 
@@ -119,7 +124,10 @@ class BaseAccountingData(BaseModel):
             return int(value)
         except (ValueError, TypeError):
             logger.warning(
-                f"Unsupported type for {info.field_name}: {type(value)} ({value}), using 0"
+                "Unsupported type for %s: %s (%s), using 0",
+                info.field_name,
+                type(value),
+                value,
             )
             return 0
 
@@ -127,10 +135,12 @@ class BaseAccountingData(BaseModel):
 
 
 class AccountingData(BaseAccountingData):
-    pass
+    """Модель для данных учета."""
 
 
 class AccountingResponse(BaseModel):
+    """Модель для ответа на запрос учета."""
+
     action: Literal["noop", "kill", "update", "log"] = "noop"
     reason: Optional[str] = None
     status: Literal["success", "error"] = "success"
@@ -138,14 +148,14 @@ class AccountingResponse(BaseModel):
 
 
 class ServiceCategory(BaseModel):
-    """Категория сервиса."""
+    """Модель для категории сервиса."""
 
     timeto: Optional[int] = None
     speed: Optional[int] = None
 
 
 class ServiceCats(BaseModel):
-    """Категории сервисов."""
+    """Модель для категорий сервисов."""
 
     internet: Optional[ServiceCategory] = None
 
@@ -171,6 +181,8 @@ class LoginBase(BaseModel):
 
 
 class SessionData(BaseAccountingData, LoginBase):
+    """Модель для сессии с данными логина."""
+
     GMT: Optional[int] = 5
     Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
     Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
@@ -181,8 +193,6 @@ class SessionData(BaseAccountingData, LoginBase):
 
 class LoginSearchResult(LoginBase):
     """Модель для результата поиска логина."""
-
-    pass
 
 
 class EnrichedSessionData(AccountingData, LoginBase):
@@ -221,7 +231,7 @@ class TrafficData(BaseModel):
         "ERX_IPv6_Acct_Output_Packets",
         mode="before",
     )
-    def ensure_non_negative(cls, value):
+    def ensure_non_negative(cls: type, value: Any) -> int:
         """Гарантирует, что значения трафика не отрицательные."""
         if value is None:
             return 0
@@ -275,7 +285,7 @@ class AuthRequest(BaseModel):
     )
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+    def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
@@ -299,6 +309,8 @@ class AuthDataLog(BaseModel):
 
 
 class AuthResponse(BaseModel):
+    """Модель для ответа авторизации RADIUS"""
+
     # Reply
     reply_framed_ip_address: Optional[str] = Field(
         None, alias="reply:Framed-IP-Address"
@@ -330,6 +342,7 @@ class AuthResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     def to_radius(self) -> Dict[str, Any]:
+        """Преобразовать в словарь для отправки в RADIUS"""
         return self.model_dump(by_alias=True, exclude_none=True)
 
 

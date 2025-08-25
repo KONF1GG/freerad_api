@@ -1,16 +1,28 @@
-import aio_pika
-import json
-import asyncio
-import logging
-from typing import Optional
-from aio_pika import DeliveryMode, ExchangeType
-from config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_QUEUE
-from schemas import RABBIT_MODELS
+"""
+Модуль для работы с RabbitMQ.
 
-logger = logging.getLogger(__name__)
+Содержит класс RabbitMQClient для работы с RabbitMQ,
+а также функции для отправки сообщений и проверки здоровья соединения.
+"""
+
+import asyncio
+import json
+import logging
+import time
+from typing import Optional
+
+import aio_pika
+from aio_pika import DeliveryMode, ExchangeType
+from ..config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_QUEUE
+from ..models import RABBIT_MODELS
+from ..core.metrics import track_function
+
+logger = logging.getLogger("radius_core")
 
 
 class RabbitMQClient:
+    """Класс для работы с RabbitMQ"""
+
     def __init__(self):
         self._connection: Optional[aio_pika.abc.AbstractRobustConnection] = None
         self._channel: Optional[aio_pika.abc.AbstractChannel] = None
@@ -23,7 +35,6 @@ class RabbitMQClient:
             async with self._lock:
                 if self._channel is None or self._channel.is_closed:
                     try:
-                        # Создаем робастное соединение
                         self._connection = await aio_pika.connect_robust(
                             AMQP_URL,
                             heartbeat=30,
@@ -31,10 +42,8 @@ class RabbitMQClient:
                         )
                         self._channel = await self._connection.channel()
 
-                        # Настраиваем QoS
                         await self._channel.set_qos(prefetch_count=100)
 
-                        # Создаем exchange
                         self._exchange = await self._channel.declare_exchange(
                             name=AMQP_EXCHANGE,
                             type=ExchangeType.DIRECT,
@@ -44,9 +53,9 @@ class RabbitMQClient:
                         # Создаем очереди
                         # await self._setup_queues()
 
-                        logger.info("RabbitMQ connection established successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to connect to RabbitMQ: {e}")
+                        logger.info("Соединение с RabbitMQ успешно установлено")
+                    except Exception:
+                        logger.error("Не удалось установить соединение с RabbitMQ")
                         raise
         return self._channel
 
@@ -107,11 +116,11 @@ class RabbitMQClient:
                 routing_key=routing_key,
             )
 
-            logger.debug(f"Message sent to {routing_key}: {len(body)} bytes")
+            logger.debug("Сообщение отправлено в %s: %s байт", routing_key, len(body))
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to send message to {routing_key}: {e}")
+        except (AttributeError, ConnectionError, TimeoutError) as e:
+            logger.error("Не удалось отправить сообщение в %s: %s", routing_key, e)
             return False
 
     async def close(self):
@@ -121,8 +130,8 @@ class RabbitMQClient:
                 await self._channel.close()
             if self._connection and not self._connection.is_closed:
                 await self._connection.close()
-        except Exception as e:
-            logger.error(f"Error closing RabbitMQ connection: {e}")
+        except (ConnectionError, TimeoutError, AttributeError) as e:
+            logger.error("Ошибка при закрытии соединения с RabbitMQ: %s", e)
         finally:
             self._channel = None
             self._connection = None
@@ -133,8 +142,8 @@ class RabbitMQClient:
         try:
             await self.get_channel()
             return self._channel is not None and not self._channel.is_closed
-        except Exception as e:
-            logger.error(f"RabbitMQ health check failed: {e}")
+        except (ConnectionError, TimeoutError, AttributeError) as e:
+            logger.error("Проверка здоровья соединения с RabbitMQ не прошла: %s", e)
             return False
 
 
@@ -147,10 +156,16 @@ async def get_rabbitmq_client() -> RabbitMQClient:
     return _rabbitmq_client
 
 
+@track_function("rabbitmq", "send_message")
 async def rmq_send_message(routing_key: str, message: RABBIT_MODELS) -> bool:
     """Отправить сообщение в RabbitMQ"""
-    client = await get_rabbitmq_client()
-    return await client.send_message(routing_key, message)
+
+    try:
+        client = await get_rabbitmq_client()
+        result = await client.send_message(routing_key, message)
+        return result
+    except Exception:
+        raise
 
 
 async def close_rabbitmq():

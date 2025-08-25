@@ -1,0 +1,40 @@
+"""Обогащение данных сессии информацией о логине."""
+
+import logging
+from typing import Optional
+
+from ...models import AccountingData, EnrichedSessionData, LoginSearchResult
+from pydantic import ValidationError
+
+logger = logging.getLogger("radius_core")
+
+
+async def enrich_session_with_login(
+    session_req: AccountingData, login: Optional[LoginSearchResult]
+) -> EnrichedSessionData:
+    """
+    Обогащение данных сессии информацией о логине.
+
+    Args:
+        session_req: Данные сессии (AccountingData).
+        login: Данные логина (LoginSearchResult) или None.
+
+    Returns:
+        EnrichedSessionData: Обогащенная модель сессии с данными логина.
+    """
+    session_dict = session_req.model_dump(by_alias=True)
+
+    if login:
+        session_dict.update(login.model_dump(by_alias=True))
+
+    if session_dict.get("ERX-Service-Session"):
+        session_dict["service"] = session_dict["ERX-Service-Session"]
+
+    try:
+        return EnrichedSessionData(**session_dict)
+    except ValidationError as e:
+        logger.error(f"Failed to create EnrichedSessionData: {e}")
+        accounting_fields = AccountingData.model_fields.keys()
+        return EnrichedSessionData(
+            **{k: v for k, v in session_dict.items() if k in accounting_fields}
+        )

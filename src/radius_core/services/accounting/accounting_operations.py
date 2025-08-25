@@ -1,0 +1,365 @@
+"""Операции аккаунтинга RADIUS."""
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
+from fastapi import HTTPException
+
+from ...config import RADIUS_SESSION_PREFIX
+from ..storage.queue_operations import (
+    send_to_session_queue,
+    send_to_traffic_queue,
+)
+
+from ..storage.redis_operations import (
+    get_session_from_redis,
+    save_session_to_redis,
+    delete_session_from_redis,
+)
+
+from ..storage.search_operations import (
+    find_login_by_session,
+)
+
+from ..data_processing import (
+    enrich_session_with_login,
+    process_traffic_data,
+)
+
+from ..storage.service_operations import update_main_session_service
+
+from ...models import AccountingData, AccountingResponse, SessionData
+from ..coa.coa_operations import send_coa_session_kill
+from ...core.metrics import track_function
+
+logger = logging.getLogger("radius_core")
+
+
+@track_function("radius", "process_accounting")
+async def process_accounting(
+    data: AccountingData, redis=None, rabbitmq=None
+) -> AccountingResponse:
+    """Основная функция обработки аккаунтинга"""
+
+    try:
+        session_req = data
+        packet_type = session_req.Acct_Status_Type
+        session_unique_id = session_req.Acct_Unique_Session_Id
+        event_time = session_req.Event_Timestamp
+        event_timestamp = int(
+            session_req.Event_Timestamp.astimezone(timezone.utc).timestamp()
+        )
+
+        logger.info(
+            "Обработка аккаунтинга: %s для сессии %s", packet_type, session_unique_id
+        )
+
+        # Получаем активную сессию из Redis и данные логина
+        redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
+        session_stored, login = await asyncio.gather(
+            get_session_from_redis(redis_key, redis),
+            find_login_by_session(session_req, redis),
+        )
+
+        # Добавляем данные логина в данные сессии
+        session_req = await enrich_session_with_login(session_req, login)
+
+        # Соединяем счетчики трафика
+        session_req = await process_traffic_data(session_req)
+
+        service = session_req.ERX_Service_Session
+        is_service_session = bool(service)
+
+        # Обработка сервисной сессии
+        if service and login:
+            session_id = session_req.Acct_Session_Id
+            if ":" in session_id:
+                logger.debug("Обработка сервисной сессии %s", session_id)
+                await update_main_session_service(session_req, redis)
+
+        logger.debug("Данные старой записи сессии: %s", session_stored)
+        logger.debug("Найденный логин: %s", login)
+
+        # Обработка завершения сессии при изменении логина или его отсутствии
+        if session_stored:
+            session_closure_result = await _handle_session_closure_conditions(
+                session_stored,
+                session_req,
+                login,
+                redis_key,
+                redis,
+                event_time,
+                session_unique_id,
+                rabbitmq,
+            )
+            if session_closure_result:
+                return session_closure_result
+
+        # Создаем или обновляем сессию
+        session_new = _prepare_session_data(
+            session_stored, session_req, is_service_session
+        )
+
+        # Обработка по типу пакета
+        if packet_type == "Start":
+            await _handle_start_packet(session_new, event_time, redis_key, redis)
+        elif packet_type == "Interim-Update":
+            await _handle_interim_update_packet(
+                session_new,
+                session_stored,
+                event_time,
+                event_timestamp,
+                is_service_session,
+                redis_key,
+                redis,
+            )
+        elif packet_type == "Stop":
+            await _handle_stop_packet(
+                session_new,
+                session_stored,
+                event_time,
+                event_timestamp,
+                redis_key,
+                redis,
+            )
+        else:
+            logger.error("Неизвестный тип пакета: %s", packet_type)
+            raise HTTPException(
+                status_code=400, detail=f"Unknown packet type: {packet_type}"
+            )
+
+        logger.info("Аккаунтинг успешно обработан: %s", packet_type)
+        return AccountingResponse(
+            action="noop", reason="processed successfully", session_id=session_unique_id
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Ошибка при обработке аккаунтинга: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def _handle_session_closure_conditions(
+    session_stored: Any,
+    session_req: Any,
+    login: Any,
+    redis_key: str,
+    redis,
+    event_time: datetime,
+    session_unique_id: str,
+    rabbitmq,
+) -> Optional[AccountingResponse]:
+    """Обрабатывает условий для завершения сессии"""
+    stored_login = getattr(session_stored, "login", None)
+    stored_auth_type = getattr(session_stored, "auth_type", "UNAUTH")
+    current_login = getattr(login, "login", None)
+    current_auth_type = getattr(login, "auth_type", "UNAUTH")
+
+    # 1. Нет логина, но сессия авторизована
+    if not login and stored_auth_type != "UNAUTH":
+        logger.warning(
+            "Сессия %s найдена авторизованная, но логин не найден. ",
+            session_unique_id,
+        )
+        return await _merge_and_close_session(
+            session_stored,
+            session_req,
+            redis_key,
+            redis,
+            event_time,
+            session_unique_id,
+            rabbitmq=rabbitmq,
+            send_coa=True,
+            log_msg=f"Сессия {session_unique_id} завершена: login not found",
+            reason="login not found, session closed",
+        )
+
+    # 2. Логин изменился
+    if login and stored_login and stored_login != current_login:
+        logger.warning(
+            "Логин изменился с %s на %s, завершаем сессию. %s",
+            stored_login,
+            current_login,
+            session_unique_id,
+        )
+        return await _merge_and_close_session(
+            session_stored,
+            session_req,
+            redis_key,
+            redis,
+            event_time,
+            session_unique_id,
+            rabbitmq=rabbitmq,
+            send_coa=True,
+            log_msg=f"Сессия {session_unique_id} завершена: login mismatch",
+            reason="login mismatch, session closed",
+        )
+
+    # 3. Сессия была UNAUTH, теперь авторизована
+    if stored_auth_type == "UNAUTH" and current_auth_type != "UNAUTH":
+        logger.warning(
+            "Сессия %s была UNAUTH, теперь авторизована: %s. %s",
+            session_unique_id,
+            login,
+            session_unique_id,
+        )
+        return await _merge_and_close_session(
+            session_stored,
+            session_req,
+            redis_key,
+            redis,
+            event_time,
+            session_unique_id,
+            rabbitmq=rabbitmq,
+            send_coa=True,
+            log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
+            reason="session UNAUTH closed (now authorized)",
+        )
+
+    return None
+
+
+def _prepare_session_data(
+    session_stored: Any, session_req: Any, is_service_session: bool
+) -> SessionData:
+    """Подготавливает данные сессии для обработки"""
+    if session_stored:
+        logger.debug("Обогащение существующей сессии новыми данными")
+        session_stored_dict = session_stored.model_dump(by_alias=True)
+        session_req_dict = session_req.model_dump(by_alias=True)
+        # Для несервисных сессий не обновляем ERX_Service_Session
+        if not is_service_session and "ERX-Service-Session" in session_req_dict:
+            session_req_dict.pop("ERX-Service-Session")
+        session_stored_dict.update(session_req_dict)
+        return SessionData(**session_stored_dict)
+    else:
+        logger.debug("Создание новой сессии из входящих данных")
+        session_req_dict = session_req.model_dump(by_alias=True)
+        if not is_service_session and "ERX-Service-Session" in session_req_dict:
+            session_req_dict.pop("ERX-Service-Session")
+        return SessionData(**session_req_dict)
+
+
+async def _handle_start_packet(
+    session_new: SessionData, event_time: datetime, redis_key: str, redis
+) -> None:
+    """Обрабатывает пакет START"""
+    logger.info("Обработка пакета START")
+    session_new.Acct_Start_Time = event_time
+    session_new.Acct_Update_Time = event_time
+    session_new.Acct_Session_Time = 0
+    session_new.Acct_Stop_Time = None
+
+    await asyncio.gather(
+        save_session_to_redis(session_new, redis_key, redis),
+        send_to_session_queue(session_new),
+    )
+
+
+async def _handle_interim_update_packet(
+    session_new: SessionData,
+    session_stored: Any,
+    event_time: datetime,
+    event_timestamp: int,
+    is_service_session: bool,
+    redis_key: str,
+    redis,
+) -> None:
+    """Обрабатывает пакет Interim-Update"""
+    tasks = []
+    if session_stored:
+        logger.debug("Обработка Interim-Update для существующей сессии")
+        session_new.Acct_Update_Time = event_time
+        tasks.append(send_to_traffic_queue(session_new, session_stored))
+    else:
+        logger.info("Interim-Update без активной сессии, создание новой")
+        session_new.Acct_Start_Time = datetime.fromtimestamp(
+            event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
+        )
+        session_new.Acct_Update_Time = event_time
+        tasks.append(send_to_traffic_queue(session_new, None))
+
+    if not is_service_session:
+        tasks.append(save_session_to_redis(session_new, redis_key, redis))
+        tasks.append(send_to_session_queue(session_new))
+    await asyncio.gather(*tasks)
+
+
+async def _handle_stop_packet(
+    session_new: SessionData,
+    session_stored: Any,
+    event_time: datetime,
+    event_timestamp: int,
+    redis_key: str,
+    redis,
+) -> None:
+    """Обрабатывает пакет STOP"""
+    logger.info("Обработка пакета STOP")
+    session_new.Acct_Stop_Time = event_time
+    session_new.Acct_Update_Time = event_time
+
+    if not session_stored:
+        session_new.Acct_Start_Time = datetime.fromtimestamp(
+            event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
+        )
+    else:
+        session_new.Acct_Start_Time = session_stored.Acct_Start_Time
+
+    await asyncio.gather(
+        send_to_session_queue(session_new, stoptime=True),
+        send_to_traffic_queue(
+            session_new,
+            session_stored if session_stored else None,
+        ),
+        delete_session_from_redis(redis_key, redis)
+        if session_stored
+        else asyncio.sleep(0),
+    )
+
+
+async def _merge_and_close_session(
+    session_stored: Any,
+    session_req: Any,
+    redis_key: str,
+    redis,
+    event_time: datetime,
+    session_unique_id: str,
+    rabbitmq=None,
+    send_coa: bool = False,
+    log_msg: Optional[str] = None,
+    reason: str = "session closed",
+) -> AccountingResponse:
+    """Слить данные входящего пакета в существующую сессию,
+    опционально отправить CoA kill и удалить сессию из Redis"""
+    # Merge models
+    session_stored_dict = session_stored.model_dump(by_alias=True)
+    session_req_dict = session_req.model_dump(by_alias=True)
+    session_stored_dict.update(session_req_dict)
+    session_to_close = SessionData(**session_stored_dict)
+
+    # Update timestamps
+    session_to_close.Acct_Stop_Time = event_time
+    session_to_close.Acct_Update_Time = event_time
+
+    tasks = [
+        send_to_session_queue(session_to_close, stoptime=True),
+        send_to_traffic_queue(session_to_close, session_stored),
+    ]
+
+    if send_coa:
+        tasks.append(send_coa_session_kill(session_to_close, rabbitmq))
+
+    tasks.append(delete_session_from_redis(redis_key, redis))
+
+    await asyncio.gather(*tasks)
+
+    if log_msg:
+        logger.info(log_msg)
+    else:
+        logger.info("Сессия %s сохранена и завершена (%s)", session_unique_id, reason)
+
+    return AccountingResponse(
+        action="kill", reason=reason, session_id=session_unique_id
+    )
