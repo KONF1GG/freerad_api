@@ -6,7 +6,7 @@ import re
 from typing import Optional, List, Any
 from ...models import SessionData, LoginSearchResult
 from ...clients import execute_redis_command
-from .vlan_fix import fix_vlan_fields_in_index
+
 from ...utils import is_mac_username, mac_from_username, mac_from_hex, nasportid_parse
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
@@ -54,23 +54,24 @@ async def search_redis(
                 logger.debug("FT.SEARCH result: %s", result)
             except Exception as e:
                 if "WRONGTYPE" in str(e):
-                    logger.warning(
-                        "WRONGTYPE error on index %s, attempting to fix vlan fields",
+                    logger.error(
+                        "WRONGTYPE error on index %s with query: %s\n"
+                        "Индекс может быть поврежден или содержать неправильные типы данных\n"
+                        "Полная ошибка: %s",
                         index,
+                        query,
+                        e,
                     )
-                    # Пытаемся исправить поля vlan в поврежденных документах
-                    await fix_vlan_fields_in_index(redis, index)
-                    # Повторяем поиск
-                    try:
-                        result = await execute_redis_command(
-                            redis, "FT.SEARCH", index, query
-                        )
-                        logger.debug("FT.SEARCH result after fix: %s", result)
-                    except Exception as e2:
-                        logger.error("Search still fails after vlan fix: %s", e2)
-                        return None
+                    return None
                 else:
+                    logger.error(
+                        "Ошибка при выполнении FT.SEARCH на индексе %s с запросом %s: %s",
+                        index,
+                        query,
+                        e,
+                    )
                     raise
+                
             if not result or result[0] == 0:
                 logger.debug("No results for %s query: %s", key_type, query)
                 return None
@@ -83,8 +84,12 @@ async def search_redis(
                 logger.error("redis_key is required for GET operation")
                 return None
             logger.debug("Executing GET on key: %s", redis_key)
-            result = await execute_redis_command(redis, "GET", redis_key)
-            logger.debug("GET result: %s", result)
+            try:
+                result = await execute_redis_command(redis, "GET", redis_key)
+                logger.debug("GET result: %s", result)
+            except Exception as e:
+                logger.error("Ошибка при выполнении GET для ключа %s: %s", redis_key, e)
+                raise
             if not result:
                 logger.debug("No results for %s key: %s", key_type, redis_key)
                 return None
@@ -151,24 +156,32 @@ async def find_login_by_session(
 
             # Поиск логина по МАКу
             search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
+            logger.debug("Поиск логина по MAC+VLAN: %s", search_query)
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
+                logger.debug("Логин найден по MAC+VLAN: %s", result.login)
                 return result
 
             # Поиск камеры по МАКу
             search_query = f"@mac:{{{mac}}}"
+            logger.debug(
+                "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
+            )
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
             )
             if result:
+                logger.debug("Видеокамера найдена по MAC: %s", result.login)
                 return result
 
             remote_id = session.ADSL_Agent_Remote_Id
             if remote_id:
                 onu_mac = mac_from_hex(remote_id).replace(":", r"\:")
                 search_query = f"@onu_mac:{{{onu_mac}}}"
+                logger.debug("Поиск логина по ONU MAC: %s", search_query)
                 result = await search_redis(redis, search_query, auth_type="OPT82")
                 if result:
+                    logger.debug("Логин найден по ONU MAC: %s", result.login)
                     return result
 
         else:
@@ -179,11 +192,16 @@ async def find_login_by_session(
                 logger.debug("Static session, IP: %s", ip)
                 escaped_ip = ip.replace(".", "\\.")
                 search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
+                logger.debug("Поиск статического логина по IP+VLAN: %s", search_query)
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
+                    logger.debug(
+                        "Статический логин найден по IP+VLAN: %s", result.login
+                    )
                     return result
             else:
                 login_key = f"{RADIUS_LOGIN_PREFIX}{username.strip().lower()}"
+                logger.debug("Поиск PPPoE логина по ключу: %s", login_key)
                 result = await search_redis(
                     redis,
                     query=login_key,
@@ -192,6 +210,7 @@ async def find_login_by_session(
                     redis_key=login_key,
                 )
                 if result:
+                    logger.debug("PPPoE логин найден по ключу: %s", result.login)
                     return result
 
         logger.info("Login not found: username=%s, VLAN=%s", username, vlan)

@@ -1,0 +1,681 @@
+[
+  {
+    "key": "login:ppvpn189",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1652,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn6600",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1437,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:azvpn4816",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1497,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn4383",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1192,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:agvpn16493",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 800,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6651",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1495,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6627",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 943,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn11738",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1265,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn7189",
+    "old_vlan": 114,
+    "new_vlan": "114",
+    "doc_size": 1907,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:savpn1525",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1503,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn5640",
+    "old_vlan": 217,
+    "new_vlan": "217",
+    "doc_size": 1165,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6642",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 942,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:smvpn5464",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1490,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn6646",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1586,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn4647",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1642,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn6479",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1791,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn2314",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1501,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:bkvpn207",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1500,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vrvpn3783",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1502,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:inet5471",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1271,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn9785",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1509,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vsvpn1673",
+    "old_vlan": 112,
+    "new_vlan": "112",
+    "doc_size": 1192,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn10302",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1700,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:mhvpn3250",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1217,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn11708",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1786,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:nyvpn508",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 918,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vrvpn5281",
+    "old_vlan": 227,
+    "new_vlan": "227",
+    "doc_size": 1311,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn8719",
+    "old_vlan": 183,
+    "new_vlan": "183",
+    "doc_size": 1271,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6640",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1523,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn4006",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1630,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn9784",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1498,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vrvpn3773",
+    "old_vlan": 101,
+    "new_vlan": "101",
+    "doc_size": 1501,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:inet5470",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1267,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:kzvpn3215",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1188,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:abvpn3251",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1492,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:dtvpn82",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1622,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:nkvpn3558",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1210,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vsvpn13771",
+    "old_vlan": 147,
+    "new_vlan": "147",
+    "doc_size": 1315,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn6316",
+    "old_vlan": 222,
+    "new_vlan": "222",
+    "doc_size": 1333,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn11733",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1541,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn6321",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1671,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ngvpn4388",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1662,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ilvpn8286",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1451,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6178",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 885,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:nyvpn511",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 802,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vsvpn13184",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1474,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:mlvpn3323",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1498,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:kzvpn3226",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1477,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn6618",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1461,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vnvpn1907",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1533,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:smvpn3417",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1483,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:gmvpn3403",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1790,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn5676",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1522,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn3999",
+    "old_vlan": 188,
+    "new_vlan": "188",
+    "doc_size": 1668,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ykvpn3589",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1686,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ilvpn10284",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1498,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:dtvpn162",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1493,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:bzvpn226",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1649,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn9775",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1513,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:levpn4595",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1142,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn3141",
+    "old_vlan": 181,
+    "new_vlan": "181",
+    "doc_size": 1290,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:savpn1369",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1449,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn7452",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1467,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn9781",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1522,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn9972",
+    "old_vlan": 105,
+    "new_vlan": "105",
+    "doc_size": 1169,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ilvpn10255",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1495,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vsvpn13570",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1480,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vnvpn1904",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1477,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6610",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1472,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn6308",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1505,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn5293",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1503,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sevpn8008",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1701,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn12117",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 827,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ngvpn11182",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1288,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ppvpn190",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1655,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:afvpn4619",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1280,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:cmvpn6310",
+    "old_vlan": 63,
+    "new_vlan": "63",
+    "doc_size": 1331,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:levpn4400",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1354,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:mtvpn3474",
+    "old_vlan": 119,
+    "new_vlan": "119",
+    "doc_size": 1275,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:inet5472",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1282,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn4373",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1222,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:mgvpn3560",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1196,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:bnvpn5094",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1653,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:pmvpn4488",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 804,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:kbvpn2481",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1706,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:sovpn7363",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1640,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ulvpn6615",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1500,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ocvpn4146",
+    "old_vlan": 129,
+    "new_vlan": "129",
+    "doc_size": 1298,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ozvpn3433",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1654,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:pmvpn4490",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 780,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:smvpn5135",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1468,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:bnvpn4727",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1507,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:znvpn12074",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1482,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vnvpn1905",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1510,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:smvpn5466",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1505,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:ilvpn10287",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1652,
+    "has_other_numeric_fields": true
+  },
+  {
+    "key": "login:vnvpn1786",
+    "old_vlan": 0,
+    "new_vlan": "0",
+    "doc_size": 1624,
+    "has_other_numeric_fields": true
+  }
+]

@@ -146,11 +146,14 @@ async def redis_health_check() -> bool:
 async def execute_redis_command(redis_conn, *args, timeout: float | None = None):
     """Выполнить команду Redis с тайм-аутом"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
+    command_name = args[0] if args else "unknown"
+    command_args = args[1:] if len(args) > 1 else []
+
     try:
         logger.debug(
             "Executing Redis command: %s with args: %s",
-            args[0] if args else "unknown",
-            args[1:] if len(args) > 1 else [],
+            command_name,
+            command_args,
         )
         async with redis_client.semaphore:
             result = await asyncio.wait_for(
@@ -160,11 +163,23 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
         return result
     except asyncio.TimeoutError:
         logger.error(
-            "Redis команда завершилась с тайм-аутом: %s: %s", eff_timeout, args[0]
+            "Redis команда завершилась с тайм-аутом: %s: %s (аргументы: %s)",
+            eff_timeout,
+            command_name,
+            command_args,
         )
         raise
     except Exception as e:
-        logger.error("Redis команда завершилась с ошибкой: %s", e)
+        logger.error(
+            "Redis команда завершилась с ошибкой: %s\n"
+            "Команда: %s\n"
+            "Аргументы: %s\n"
+            "Тип ошибки: %s",
+            e,
+            command_name,
+            command_args,
+            type(e).__name__,
+        )
         raise
 
 
@@ -200,8 +215,24 @@ async def execute_redis_pipeline(
 
         return result
     except asyncio.TimeoutError:
-        logger.error("Redis pipeline завершилась с тайм-аутом: %s", eff_timeout)
+        logger.error(
+            "Redis pipeline завершился с тайм-аутом: %s\n"
+            "Количество команд: %s\n"
+            "Первая команда: %s",
+            eff_timeout,
+            len(commands),
+            commands[0] if commands else "нет команд",
+        )
         raise
     except Exception as e:
-        logger.error("Redis pipeline завершилась с ошибкой: %s", e)
+        logger.error(
+            "Redis pipeline завершился с ошибкой: %s\n"
+            "Количество команд: %s\n"
+            "Команды: %s\n"
+            "Тип ошибки: %s",
+            e,
+            len(commands),
+            commands,
+            type(e).__name__,
+        )
         raise
