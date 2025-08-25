@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional, List, Any
 from ...models import SessionData, LoginSearchResult
-from ...clients import execute_redis_command, get_redis
+from ...clients import execute_redis_command
 from ...utils import is_mac_username, mac_from_username, mac_from_hex, nasportid_parse
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
@@ -78,20 +78,18 @@ async def search_redis(
 @track_function("redis", "find_login")
 async def find_login_by_session(
     session: Any,
-    redis=None,
+    redis,
 ) -> Optional[LoginSearchResult]:
     """
     Асинхронный поиск логина по данным сессии.
 
     Args:
         session: Данные сессии (AccountingData).
-        redis: Redis client, если не передан - создается новый
+        redis: Redis client
 
     Returns:
         Optional[LoginSearchResult]: Результат поиска или None, если логин не найден.
     """
-    if redis is None:
-        redis = await get_redis()
 
     try:
         nas_port_id = session.NAS_Port_Id

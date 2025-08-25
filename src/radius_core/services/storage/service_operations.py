@@ -4,26 +4,24 @@ import json
 import logging
 
 from ...models import EnrichedSessionData
-from ...clients import get_redis, execute_redis_command
+from ...clients import execute_redis_command
 
 logger = logging.getLogger(__name__)
 
 
 async def update_main_session_service(
-    service_session_req: EnrichedSessionData, redis=None
+    service_session_req: EnrichedSessionData, redis
 ) -> bool:
     """
     Обновляет поле ERX-Service-Session в основной сессии на основе данных сервисной сессии.
     Args:
         service_session_req: Данные сервисной сессии
-        redis: Redis client, если не передан - создается новый
+        redis: Redis client
     Returns:
         bool: True если обновление прошло успешно, False если основная сессия не найдена
     """
     try:
         service_session_id = service_session_req.Acct_Session_Id
-        if redis is None:
-            redis = await get_redis()
 
         # Извлекаем основной ID из сервисного (берем часть до двоеточия)
         if ":" in service_session_id:

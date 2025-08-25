@@ -110,7 +110,7 @@ async def check_and_correct_service_state(
     return None
 
 
-async def check_and_correct_services(key: str, redis=None, rabbitmq=None):
+async def check_and_correct_services(key: str, redis, rabbitmq=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
 
     if key.startswith("device:"):
@@ -124,7 +124,7 @@ async def check_and_correct_services(key: str, redis=None, rabbitmq=None):
         )
 
 
-async def _check_device_services(key: str, redis=None, rabbitmq=None):
+async def _check_device_services(key: str, redis, rabbitmq=None):
     """Проверяет сервисы для устройства"""
     device_id = key.split(":", 1)[1]
     logger.debug("Проверка устройства: %s", device_id)
@@ -169,7 +169,7 @@ async def _check_device_services(key: str, redis=None, rabbitmq=None):
         )
 
 
-async def _check_login_services(key: str, redis=None, rabbitmq=None):
+async def _check_login_services(key: str, redis, rabbitmq=None):
     """Проверяет сервисы для логина"""
     login_name = key.split(":", 1)[1]
     logger.debug("Проверка сервисов для логина: %s", login_name)

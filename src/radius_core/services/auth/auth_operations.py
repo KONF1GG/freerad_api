@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @track_function("radius", "auth")
-async def auth(data: AuthRequest, redis=None) -> Dict[str, Any]:
+async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
     """Авторизация пользователя"""
 
     try:

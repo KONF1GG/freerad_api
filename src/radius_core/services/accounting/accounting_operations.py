@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 @track_function("radius", "process_accounting")
 async def process_accounting(
-    data: AccountingData, redis=None, rabbitmq=None
+    data: AccountingData, redis, rabbitmq=None
 ) -> AccountingResponse:
     """Основная функция обработки аккаунтинга"""
 

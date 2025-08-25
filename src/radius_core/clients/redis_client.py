@@ -147,7 +147,7 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
     """Выполнить команду Redis с тайм-аутом"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
     try:
-        async with redis_conn.semaphore:
+        async with redis_client.semaphore:
             result = await asyncio.wait_for(
                 redis_conn.execute_command(*args), timeout=eff_timeout
             )
@@ -181,15 +181,16 @@ async def execute_redis_pipeline(
                 # Выполняем весь пакет
                 result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
         else:
-            # Используем переданный клиент
-            pipe = redis_conn.pipeline()
+            # Используем переданный клиент с семафором
+            async with redis_client.semaphore:
+                pipe = redis_conn.pipeline()
 
-            # Добавляем команды в pipeline
-            for cmd in commands:
-                pipe.execute_command(*cmd)
+                # Добавляем команды в pipeline
+                for cmd in commands:
+                    pipe.execute_command(*cmd)
 
-            # Выполняем весь пакет
-            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+                # Выполняем весь пакет
+                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
 
         return result
     except asyncio.TimeoutError:

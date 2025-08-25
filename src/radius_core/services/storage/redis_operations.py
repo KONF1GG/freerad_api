@@ -6,21 +6,18 @@ from typing import Optional
 from pydantic import ValidationError
 
 from ...models import SessionData
-from ...clients import get_redis, execute_redis_command, execute_redis_pipeline
+from ...clients import execute_redis_command, execute_redis_pipeline
 from ...core.metrics import track_function
 
 logger = logging.getLogger(__name__)
 
 
 @track_function("redis", "get_session")
-async def get_session_from_redis(redis_key: str, redis=None) -> Optional[SessionData]:
+async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]:
     """
     Получение сессии из Redis и преобразование в модель RedisSessionData.
     """
     try:
-        if redis is None:
-            redis = await get_redis()
-
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
         if not session_data:
             logger.debug("No session data found for key: %s", redis_key)
@@ -44,7 +41,7 @@ async def get_session_from_redis(redis_key: str, redis=None) -> Optional[Session
 
 @track_function("redis", "save_session")
 async def save_session_to_redis(
-    session_data: SessionData, redis_key: str, redis=None
+    session_data: SessionData, redis_key: str, redis
 ) -> bool:
     """Сохранение сессии в Redis с оптимизацией через pipeline"""
     try:
@@ -62,11 +59,9 @@ async def save_session_to_redis(
 
 
 @track_function("redis", "delete_session")
-async def delete_session_from_redis(redis_key: str, redis=None) -> bool:
+async def delete_session_from_redis(redis_key: str, redis) -> bool:
     """Удаление сессии из Redis"""
     try:
-        if redis is None:
-            redis = await get_redis()
         result = await execute_redis_command(redis, "DEL", redis_key)
         logger.debug("Session deleted from Redis: %s, result: %s", redis_key, result)
         return result > 0

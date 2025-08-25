@@ -2,7 +2,9 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
+
+from radius_core.utils.helpers import now_str
 
 from ...models import SessionData, TrafficData, AuthDataLog
 from ...clients import rmq_send_message
@@ -119,11 +121,10 @@ async def send_to_traffic_queue(
         ]
 
         # Базовые данные с алиасами
-        traffic_data = {
-            "Acct-Session-Id": session_new.Acct_Session_Id,
+        traffic_data: Dict[str, Any] = {
             "Acct-Unique-Session-Id": session_new.Acct_Unique_Session_Id,
-            "Event-Timestamp": session_new.Event_Timestamp,
-            "Acct-Update-Time": session_new.Acct_Update_Time,
+            "login": session_new.login,
+            "timestamp": now_str(),
         }
 
         # Добавляем поля трафика с алиасами
