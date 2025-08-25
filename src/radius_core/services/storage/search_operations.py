@@ -71,7 +71,6 @@ async def search_redis(
                         e,
                     )
                     raise
-                
             if not result or result[0] == 0:
                 logger.debug("No results for %s query: %s", key_type, query)
                 return None
@@ -83,19 +82,20 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
-            logger.debug("Executing GET on key: %s", redis_key)
+            logger.debug("Executing JSON.GET on key: %s", redis_key)
             try:
-                result = await execute_redis_command(redis, "GET", redis_key)
-                logger.debug("GET result: %s", result)
+                result = await redis.json().get(redis_key)
+                logger.debug("JSON.GET result: %s", result)
             except Exception as e:
-                logger.error("Ошибка при выполнении GET для ключа %s: %s", redis_key, e)
+                logger.error(
+                    "Ошибка при выполнении JSON.GET для ключа %s: %s", redis_key, e
+                )
                 raise
             if not result:
                 logger.debug("No results for %s key: %s", key_type, redis_key)
                 return None
-            if isinstance(result, bytes):
-                result = result.decode("utf-8")
-            parsed_data = json.loads(result)
+            # JSON.GET уже возвращает Python объект, не нужно парсить
+            parsed_data = result
         else:
             logger.error("Unsupported key_type: %s", key_type)
             return None
