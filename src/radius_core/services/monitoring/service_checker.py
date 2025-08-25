@@ -24,7 +24,7 @@ from ..auth.duplicate_session_handler import (
 from .service_utils import check_service_expiry
 from ...utils import nasportid_parse
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def check_and_correct_service_state(

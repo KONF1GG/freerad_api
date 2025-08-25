@@ -9,7 +9,7 @@ from ...models import SessionData
 from ...clients import get_redis, execute_redis_command, execute_redis_pipeline
 from ...core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 @track_function("redis", "get_session")
@@ -53,7 +53,7 @@ async def save_session_to_redis(
             ("JSON.SET", redis_key, "$", session_data.model_dump_json(by_alias=True)),
             ("EXPIRE", redis_key, 1800),  # TTL на 30 минут
         ]
-        await execute_redis_pipeline(commands, redis_client=redis)
+        await execute_redis_pipeline(commands, redis_conn=redis)
         logger.debug("Session saved to RedisJSON with TTL: %s", redis_key)
         return True
     except Exception as e:

@@ -25,7 +25,7 @@ from prometheus_client import (
 )
 from fastapi import Response
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 class MetricsManager:

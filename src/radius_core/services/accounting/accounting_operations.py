@@ -33,7 +33,7 @@ from ...models import AccountingData, AccountingResponse, SessionData
 from ..coa.coa_operations import send_coa_session_kill
 from ...core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 @track_function("radius", "process_accounting")
@@ -66,7 +66,7 @@ async def process_accounting(
         session_req = await enrich_session_with_login(session_req, login)
 
         # Соединяем счетчики трафика
-        session_req = await process_traffic_data(session_req)
+        session_req = process_traffic_data(session_req)
 
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)

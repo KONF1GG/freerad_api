@@ -26,7 +26,7 @@ from ..core.dependencies import RedisDependency, RabbitMQDependency
 from ..core.metrics import metrics_manager, track_function
 from ..config import PROMETHEUS_MULTIPROC_DIR
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

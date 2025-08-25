@@ -6,7 +6,7 @@ from typing import Optional
 from ...models import AccountingData, EnrichedSessionData, LoginSearchResult
 from pydantic import ValidationError
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def enrich_session_with_login(

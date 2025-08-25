@@ -10,7 +10,7 @@ from ...utils import is_mac_username, mac_from_username, mac_from_hex, nasportid
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def search_redis(

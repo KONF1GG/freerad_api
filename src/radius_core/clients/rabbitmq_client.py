@@ -8,7 +8,6 @@
 import asyncio
 import json
 import logging
-import time
 from typing import Optional
 
 import aio_pika
@@ -17,7 +16,7 @@ from ..config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_Q
 from ..models import RABBIT_MODELS
 from ..core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 class RabbitMQClient:

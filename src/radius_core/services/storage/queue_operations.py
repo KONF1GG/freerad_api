@@ -12,7 +12,7 @@ from ...config import (
     AMQP_AUTH_LOG_QUEUE,
 )
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def send_to_session_queue(

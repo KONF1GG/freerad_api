@@ -17,7 +17,7 @@ from ..config import PROMETHEUS_MULTIPROC_DIR
 from ..clients.redis_client import redis_health_check, close_redis
 from ..clients.rabbitmq_client import rabbitmq_health_check, close_rabbitmq
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 class AppLifecycleManager:

@@ -6,7 +6,7 @@ import logging
 from ...models import EnrichedSessionData
 from ...clients import get_redis, execute_redis_command
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def update_main_session_service(

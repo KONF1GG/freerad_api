@@ -11,7 +11,7 @@ from ...config import AMQP_COA_QUEUE
 from ...models import SessionData
 from ...core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 @track_function("rabbitmq", "send_coa")

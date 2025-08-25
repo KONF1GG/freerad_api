@@ -16,7 +16,7 @@ from ...models import AuthRequest, AuthResponse, AuthDataLog
 from ...utils import nasportid_parse
 from ...core.metrics import track_function
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 @track_function("radius", "auth")

@@ -3,7 +3,7 @@
 import logging
 
 # Настройка базового логгера
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 # Если логгер еще не настроен, настраиваем его
 if not logger.handlers:

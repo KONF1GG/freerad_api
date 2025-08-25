@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 def check_service_expiry(timeto: Any, now_timestamp: float) -> bool:

@@ -8,7 +8,7 @@ from typing import Dict, Any, Tuple, Union
 from datetime import datetime, timezone
 from dateutil import parser
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 def parse_event(ts: str | datetime | dict) -> datetime:

@@ -20,7 +20,7 @@ from ..config import (
     REDIS_COMMAND_TIMEOUT,
 )
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 class RedisClient:
@@ -76,8 +76,8 @@ class RedisClient:
     async def health_check(self) -> bool:
         """Проверка здоровья соединения"""
         try:
-            redis_client = await self.get_client()
-            await redis_client.ping()
+            redis_conn = await self.get_client()
+            await redis_conn.ping()
             # Логируем информацию о пуле соединений
             if self._pool:
                 logger.debug(
@@ -137,13 +137,13 @@ async def redis_health_check() -> bool:
     return await redis_client.health_check()
 
 
-async def execute_redis_command(redis_client, *args, timeout: float | None = None):
+async def execute_redis_command(redis_conn, *args, timeout: float | None = None):
     """Выполнить команду Redis с тайм-аутом"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
     try:
-        async with redis_client.semaphore:
+        async with redis_conn.semaphore:
             result = await asyncio.wait_for(
-                redis_client.execute_command(*args), timeout=eff_timeout
+                redis_conn.execute_command(*args), timeout=eff_timeout
             )
         return result
     except asyncio.TimeoutError:
@@ -157,13 +157,13 @@ async def execute_redis_command(redis_client, *args, timeout: float | None = Non
 
 
 async def execute_redis_pipeline(
-    commands: list, timeout: float | None = None, redis_client=None
+    commands: list, timeout: float | None = None, redis_conn=None
 ):
     """Выполнить пакет команд Redis через pipeline для повышения производительности"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
 
     try:
-        if redis_client is None:
+        if redis_conn is None:
             async with redis_client.semaphore:
                 redis_client_conn = await redis_client.get_client()
                 pipe = redis_client_conn.pipeline()
@@ -176,7 +176,7 @@ async def execute_redis_pipeline(
                 result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
         else:
             # Используем переданный клиент
-            pipe = redis_client.pipeline()
+            pipe = redis_conn.pipeline()
 
             # Добавляем команды в pipeline
             for cmd in commands:

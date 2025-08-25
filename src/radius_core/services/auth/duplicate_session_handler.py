@@ -11,7 +11,7 @@ from ...clients import execute_redis_command
 from ...models import SessionData
 from ...utils import is_mac_username, mac_from_username
 
-logger = logging.getLogger("radius_core")
+logger = logging.getLogger(__name__)
 
 
 async def find_duplicate_sessions_by_username_vlan(
