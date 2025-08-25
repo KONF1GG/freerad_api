@@ -5,17 +5,24 @@
 - Инициализацию Prometheus multiprocess режима
 - Health checks для Redis и RabbitMQ
 - Graceful shutdown
+- Прогрев соединений для оптимизации производительности
 """
 
 import os
 import stat
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from prometheus_client import multiprocess, CollectorRegistry
 
 from ..config import PROMETHEUS_MULTIPROC_DIR
-from ..clients.redis_client import redis_health_check, close_redis
-from ..clients.rabbitmq_client import rabbitmq_health_check, close_rabbitmq
+from ..clients.redis_client import redis_health_check, close_redis, get_redis
+from ..clients.rabbitmq_client import (
+    rabbitmq_health_check,
+    close_rabbitmq,
+    get_rabbitmq_client,
+)
+from .performance_optimizations import performance_optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +106,50 @@ class AppLifecycleManager:
         else:
             logger.info("RabbitMQ connection established")
 
+    async def _warm_up_connections(self):
+        """Прогрев соединений для уменьшения latency при первых запросах."""
+        try:
+            logger.info("Прогрев соединений для оптимизации производительности...")
+
+            # Получаем клиенты
+            redis_client = await get_redis()
+            rabbitmq_client = await get_rabbitmq_client()
+
+            # Выполняем прогрев параллельно
+            warm_up_tasks = [
+                self._warm_up_redis(redis_client),
+                self._warm_up_rabbitmq(rabbitmq_client),
+            ]
+
+            await asyncio.gather(*warm_up_tasks, return_exceptions=True)
+
+            logger.info("Прогрев соединений завершен")
+
+        except Exception as e:
+            logger.warning(f"Ошибка при прогреве соединений: {e}")
+
+    async def _warm_up_redis(self, redis_client):
+        """Прогрев Redis соединения."""
+        try:
+            # Выполняем несколько простых операций для прогрева
+            await redis_client.ping()
+            await redis_client.info()
+            await redis_client.dbsize()
+            logger.info("Redis соединение прогрето")
+        except Exception as e:
+            logger.warning(f"Ошибка при прогреве Redis: {e}")
+
+    async def _warm_up_rabbitmq(self, rabbitmq_client):
+        """Прогрев RabbitMQ соединения."""
+        try:
+            # Проверяем здоровье соединения
+            await rabbitmq_client.health_check()
+            # Получаем канал для прогрева
+            channel = await rabbitmq_client.get_channel()
+            logger.info("RabbitMQ соединение прогрето")
+        except Exception as e:
+            logger.warning(f"Ошибка при прогреве RabbitMQ: {e}")
+
     def _cleanup_prometheus_metrics(self):
         """Безопасная очистка Prometheus multiprocess метрик для текущего процесса."""
         try:
@@ -129,7 +180,7 @@ class AppLifecycleManager:
     async def lifespan(self, app=None):
         """Управление жизненным циклом приложения.
 
-        Включает health checks, очистку метрик для multiprocess и graceful shutdown.
+        Включает health checks, прогрев соединений, очистку метрик для multiprocess и graceful shutdown.
         """
         logger.info("Starting Radius Core service...")
 
@@ -139,6 +190,12 @@ class AppLifecycleManager:
 
             # Выполнение health checks
             await self._perform_health_checks()
+
+            # Прогрев соединений для оптимизации производительности
+            await self._warm_up_connections()
+
+            # Инициализация оптимизатора производительности
+            performance_optimizer.optimize_memory_usage()
 
             yield
 

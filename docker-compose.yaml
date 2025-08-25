@@ -10,7 +10,23 @@ services:
     environment:
       - PROMETHEUS_MULTIPROC_DIR=/app/prometheus_multiproc_dir
       - LOG_FILE=/var/log/radius_core/radius_log.log
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONOPTIMIZE=1
+      - DISABLE_DOCS=false
     volumes:
       - /var/log/radius_core:/var/log/radius_core
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
     labels:
       logging.jobname: radius_core
+      com.docker.compose.project: radius_core
+      com.docker.compose.service: app

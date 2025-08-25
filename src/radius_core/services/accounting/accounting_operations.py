@@ -55,7 +55,7 @@ async def process_accounting(
             "Обработка аккаунтинга: %s для сессии %s", packet_type, session_unique_id
         )
 
-        # Получаем активную сессию из Redis и данные логина
+        # Получаем активную сессию из Redis и данные логина параллельно
         redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
         session_stored, login = await asyncio.gather(
             get_session_from_redis(redis_key, redis),
@@ -76,7 +76,8 @@ async def process_accounting(
             session_id = session_req.Acct_Session_Id
             if ":" in session_id:
                 logger.debug("Обработка сервисной сессии %s", session_id)
-                await update_main_session_service(session_req, redis)
+                # Выполняем асинхронно, но не ждем результата
+                asyncio.create_task(update_main_session_service(session_req, redis))
 
         logger.debug("Данные старой записи сессии: %s", session_stored)
         logger.debug("Найденный логин: %s", login)
@@ -252,6 +253,7 @@ async def _handle_start_packet(
     session_new.Acct_Session_Time = 0
     session_new.Acct_Stop_Time = None
 
+    # Выполняем операции параллельно
     await asyncio.gather(
         save_session_to_redis(session_new, redis_key, redis),
         send_to_session_queue(session_new),
@@ -284,7 +286,10 @@ async def _handle_interim_update_packet(
     if not is_service_session:
         tasks.append(save_session_to_redis(session_new, redis_key, redis))
         tasks.append(send_to_session_queue(session_new))
-    await asyncio.gather(*tasks)
+
+    # Выполняем все задачи параллельно
+    if tasks:
+        await asyncio.gather(*tasks)
 
 
 async def _handle_stop_packet(
@@ -307,6 +312,7 @@ async def _handle_stop_packet(
     else:
         session_new.Acct_Start_Time = session_stored.Acct_Start_Time
 
+    # Выполняем операции параллельно
     await asyncio.gather(
         send_to_session_queue(session_new, stoptime=True),
         send_to_traffic_queue(
@@ -353,6 +359,7 @@ async def _merge_and_close_session(
 
     tasks.append(delete_session_from_redis(redis_key, redis))
 
+    # Выполняем все задачи параллельно
     await asyncio.gather(*tasks)
 
     if log_msg:

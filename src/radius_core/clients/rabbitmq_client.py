@@ -8,7 +8,8 @@
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Optional, List
+from contextlib import asynccontextmanager
 
 import aio_pika
 from aio_pika import DeliveryMode, ExchangeType
@@ -20,51 +21,87 @@ logger = logging.getLogger(__name__)
 
 
 class RabbitMQClient:
-    """Класс для работы с RabbitMQ"""
+    """Класс для работы с RabbitMQ с оптимизированной производительностью"""
 
     def __init__(self):
         self._connection: Optional[aio_pika.abc.AbstractRobustConnection] = None
-        self._channel: Optional[aio_pika.abc.AbstractChannel] = None
+        self._channels: List[aio_pika.abc.AbstractChannel] = []
         self._exchange: Optional[aio_pika.abc.AbstractExchange] = None
-        self._lock = asyncio.Lock()
+        self._connection_lock = asyncio.Lock()
+        self._channel_index = 0
+        self._max_channels = 10  # Максимальное количество каналов в пуле
+        self._connection_established = False
 
-    async def get_channel(self) -> aio_pika.abc.AbstractChannel:
-        """Получить канал RabbitMQ с автоматической настройкой"""
-        if self._channel is None or self._channel.is_closed:
-            async with self._lock:
-                if self._channel is None or self._channel.is_closed:
+    async def _ensure_connection(self):
+        """Обеспечить активное соединение с RabbitMQ"""
+        if (
+            not self._connection_established
+            or not self._connection
+            or self._connection.is_closed
+        ):
+            async with self._connection_lock:
+                if (
+                    not self._connection_established
+                    or not self._connection
+                    or self._connection.is_closed
+                ):
                     try:
+                        # Закрываем старые соединения
+                        if self._connection and not self._connection.is_closed:
+                            await self._connection.close()
+
+                        # Создаем новое соединение
                         self._connection = await aio_pika.connect_robust(
                             AMQP_URL,
                             heartbeat=30,
                             blocked_connection_timeout=300,
+                            timeout=5.0,  # Уменьшаем timeout
                         )
-                        self._channel = await self._connection.channel()
 
-                        await self._channel.set_qos(prefetch_count=100)
+                        # Создаем пул каналов
+                        self._channels = []
+                        for _ in range(self._max_channels):
+                            channel = await self._connection.channel()
+                            await channel.set_qos(prefetch_count=100)
+                            self._channels.append(channel)
 
-                        self._exchange = await self._channel.declare_exchange(
+                        # Создаем exchange
+                        self._exchange = await self._channels[0].declare_exchange(
                             name=AMQP_EXCHANGE,
                             type=ExchangeType.DIRECT,
                             durable=True,
                         )
 
-                        # Создаем очереди
+                        # Настраиваем очереди (комментируем для избежания конфликтов)
                         # await self._setup_queues()
-
+                        
+                        self._connection_established = True
                         logger.info("Соединение с RabbitMQ успешно установлено")
-                    except Exception:
-                        logger.error("Не удалось установить соединение с RabbitMQ")
+
+                    except Exception as e:
+                        self._connection_established = False
+                        logger.error(
+                            "Не удалось установить соединение с RabbitMQ: %s", e
+                        )
                         raise
-        return self._channel
+
+    async def get_channel(self) -> aio_pika.abc.AbstractChannel:
+        """Получить канал RabbitMQ из пула с ротацией"""
+        await self._ensure_connection()
+
+        # Ротация каналов для равномерного распределения нагрузки
+        channel = self._channels[self._channel_index % len(self._channels)]
+        self._channel_index = (self._channel_index + 1) % len(self._channels)
+
+        return channel
 
     async def _setup_queues(self):
         """Настройка очередей"""
-        if not self._channel or not self._exchange:
+        if not self._channels or not self._exchange:
             return
 
         # Очередь сессий
-        session_queue = await self._channel.declare_queue(
+        session_queue = await self._channels[0].declare_queue(
             name=AMQP_SESSION_QUEUE,
             durable=True,
             arguments={
@@ -75,7 +112,7 @@ class RabbitMQClient:
         await session_queue.bind(self._exchange, routing_key=AMQP_SESSION_QUEUE)
 
         # Очередь трафика
-        traffic_queue = await self._channel.declare_queue(
+        traffic_queue = await self._channels[0].declare_queue(
             name=AMQP_TRAFFIC_QUEUE,
             durable=True,
             arguments={
@@ -88,8 +125,10 @@ class RabbitMQClient:
     async def send_message(
         self, routing_key: str, message: RABBIT_MODELS, persistent: bool = True
     ) -> bool:
-        """Отправить сообщение в RabbitMQ"""
+        """Отправить сообщение в RabbitMQ с оптимизацией"""
         try:
+            await self._ensure_connection()
+
             if not self._exchange:
                 logger.error("Exchange not initialized")
                 return False
@@ -120,27 +159,36 @@ class RabbitMQClient:
 
         except (AttributeError, ConnectionError, TimeoutError) as e:
             logger.error("Не удалось отправить сообщение в %s: %s", routing_key, e)
+            # Сбрасываем флаг соединения для переподключения
+            self._connection_established = False
             return False
 
     async def close(self):
         """Закрыть соединение с RabbitMQ"""
         try:
-            if self._channel and not self._channel.is_closed:
-                await self._channel.close()
+            for channel in self._channels:
+                if not channel.is_closed:
+                    await channel.close()
+
             if self._connection and not self._connection.is_closed:
                 await self._connection.close()
         except (ConnectionError, TimeoutError, AttributeError) as e:
             logger.error("Ошибка при закрытии соединения с RabbitMQ: %s", e)
         finally:
-            self._channel = None
+            self._channels = []
             self._connection = None
             self._exchange = None
+            self._connection_established = False
 
     async def health_check(self) -> bool:
         """Проверка здоровья соединения"""
         try:
-            await self.get_channel()
-            return self._channel is not None and not self._channel.is_closed
+            await self._ensure_connection()
+            return (
+                self._connection_established
+                and self._connection is not None
+                and not self._connection.is_closed
+            )
         except (ConnectionError, TimeoutError, AttributeError) as e:
             logger.error("Проверка здоровья соединения с RabbitMQ не прошла: %s", e)
             return False

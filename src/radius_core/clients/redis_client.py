@@ -24,43 +24,48 @@ logger = logging.getLogger(__name__)
 
 
 class RedisClient:
-    """Класс для работы с Redis"""
+    """Класс для работы с Redis с оптимизированной производительностью"""
 
     def __init__(self):
         self._pool: Optional[redis.ConnectionPool] = None
         self._redis: Optional[redis.Redis] = None
         self._lock = asyncio.Lock()
-        # Семафор для ограничения одновременных операций
-        self._semaphore = asyncio.Semaphore(REDIS_CONCURRENCY)
+        # Убираем семафор для обычных операций - пул соединений сам управляет параллельностью
+        self._connection_established = False
 
     async def get_client(self) -> redis.Redis:
         """Получить Redis клиент с пулом соединений"""
-        if self._redis is None:
+        if not self._connection_established or self._redis is None:
             async with self._lock:
-                if self._redis is None:
+                if not self._connection_established or self._redis is None:
                     try:
+                        # Оптимизированные настройки пула
                         self._pool = redis.ConnectionPool.from_url(
                             REDIS_URL,
                             max_connections=REDIS_POOL_SIZE,
                             decode_responses=True,
                             retry_on_timeout=True,
                             retry=Retry(
-                                retries=3,
-                                backoff=ExponentialBackoff(base=0.1, cap=1.0),
+                                retries=2,  # Уменьшаем количество retry
+                                backoff=ExponentialBackoff(
+                                    base=0.1, cap=0.5
+                                ),  # Уменьшаем задержки
                                 supported_errors=(ConnectionError, TimeoutError),
                             ),
                             socket_keepalive=True,
                             socket_keepalive_options={},
-                            health_check_interval=15,
-                            socket_connect_timeout=5,
-                            socket_timeout=5,
+                            health_check_interval=30,  # Увеличиваем интервал проверки
+                            socket_connect_timeout=2,  # Уменьшаем timeout
+                            socket_timeout=2,  # Уменьшаем timeout
                         )
                         self._redis = redis.Redis(connection_pool=self._pool)
                         # Проверяем соединение
                         await self._redis.ping()
+                        self._connection_established = True
                         logger.info("Соединение с Redis успешно установлено")
-                    except Exception:
-                        logger.error("Не удалось установить соединение с Redis")
+                    except Exception as e:
+                        self._connection_established = False
+                        logger.error("Не удалось установить соединение с Redis: %s", e)
                         raise
         return self._redis
 
@@ -72,6 +77,7 @@ class RedisClient:
         if self._pool:
             await self._pool.disconnect()
             self._pool = None
+        self._connection_established = False
 
     async def health_check(self) -> bool:
         """Проверка здоровья соединения"""
@@ -86,12 +92,14 @@ class RedisClient:
             return True
         except (ConnectionError, TimeoutError) as e:
             logger.error("Проверка здоровья соединения с Redis не прошла: %s", e)
+            self._connection_established = False
             return False
 
     @property
     def semaphore(self):
-        """Получить семафор для ограничения одновременных операций"""
-        return self._semaphore
+        """Получить семафор для ограничения одновременных операций (для обратной совместимости)"""
+        # Возвращаем dummy семафор с большим лимитом
+        return asyncio.Semaphore(1000)
 
     def __getattr__(self, name):
         """Делегируем все неизвестные методы к обычному Redis клиенту"""
@@ -106,14 +114,13 @@ redis_client = RedisClient()
 
 @asynccontextmanager
 async def get_redis_connection():
-    """Контекстный менеджер для получения Redis соединения с ограничением одновременных операций"""
-    async with redis_client.semaphore:
-        redis_client_conn = await redis_client.get_client()
-        try:
-            yield redis_client_conn
-        finally:
-            # Соединение возвращается в пул автоматически
-            pass
+    """Контекстный менеджер для получения Redis соединения"""
+    redis_client_conn = await redis_client.get_client()
+    try:
+        yield redis_client_conn
+    finally:
+        # Соединение возвращается в пул автоматически
+        pass
 
 
 @asynccontextmanager
@@ -129,7 +136,6 @@ async def get_redis_connection_optimized():
 
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
-
     return await redis_client.get_client()
 
 
@@ -155,10 +161,10 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
             command_name,
             command_args,
         )
-        async with redis_client.semaphore:
-            result = await asyncio.wait_for(
-                redis_conn.execute_command(*args), timeout=eff_timeout
-            )
+        # Убираем семафор для обычных команд
+        result = await asyncio.wait_for(
+            redis_conn.execute_command(*args), timeout=eff_timeout
+        )
         logger.debug("Redis command result: %s", result)
         return result
     except asyncio.TimeoutError:
@@ -191,27 +197,25 @@ async def execute_redis_pipeline(
 
     try:
         if redis_conn is None:
-            async with redis_client.semaphore:
-                redis_client_conn = await redis_client.get_client()
-                pipe = redis_client_conn.pipeline()
+            redis_client_conn = await redis_client.get_client()
+            pipe = redis_client_conn.pipeline()
 
-                # Добавляем команды в pipeline
-                for cmd in commands:
-                    pipe.execute_command(*cmd)
+            # Добавляем команды в pipeline
+            for cmd in commands:
+                pipe.execute_command(*cmd)
 
-                # Выполняем весь пакет
-                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+            # Выполняем весь пакет
+            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
         else:
-            # Используем переданный клиент с семафором
-            async with redis_client.semaphore:
-                pipe = redis_conn.pipeline()
+            # Используем переданный клиент
+            pipe = redis_conn.pipeline()
 
-                # Добавляем команды в pipeline
-                for cmd in commands:
-                    pipe.execute_command(*cmd)
+            # Добавляем команды в pipeline
+            for cmd in commands:
+                pipe.execute_command(*cmd)
 
-                # Выполняем весь пакет
-                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+            # Выполняем весь пакет
+            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
 
         return result
     except asyncio.TimeoutError:
