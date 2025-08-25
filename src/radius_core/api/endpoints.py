@@ -53,6 +53,9 @@ async def health_check() -> Dict[str, Any]:
     semaphore_value = 0
     max_connections = 0
 
+    # Детальная информация о Redis пуле
+    redis_pool_detailed = {}
+
     try:
         semaphore = getattr(redis_client, "_semaphore", None)
         if semaphore:
@@ -62,9 +65,39 @@ async def health_check() -> Dict[str, Any]:
 
             semaphore_value = getattr(semaphore, "_value", 0)
 
+            redis_pool_detailed["available_permits"] = semaphore_value
+            redis_pool_detailed["waiting_tasks"] = waiting_tasks
+
         pool = getattr(redis_client, "_pool", None)
         if pool:
             max_connections = getattr(pool, "max_connections", 0)
+
+            # Попытка получить детальную информацию о пуле
+            try:
+                # Активные соединения (в использовании)
+                active_connections = len(getattr(pool, "_in_use_connections", []))
+                # Свободные соединения
+                idle_connections = len(getattr(pool, "_available_connections", []))
+                # Процент использования
+                usage_percent = (
+                    (active_connections / max_connections) * 100
+                    if max_connections > 0
+                    else 0
+                )
+
+                redis_pool_detailed.update(
+                    {
+                        "max_connections": max_connections,
+                        "active_connections": active_connections,
+                        "idle_connections": idle_connections,
+                        "connection_usage_percent": round(usage_percent, 2),
+                        "total_connections": active_connections + idle_connections,
+                    }
+                )
+            except (AttributeError, TypeError):
+                # Если не удалось получить детальную информацию
+                redis_pool_detailed["max_connections"] = max_connections
+
     except (AttributeError, TypeError):
         pass
 
@@ -80,6 +113,7 @@ async def health_check() -> Dict[str, Any]:
             "waiting_tasks": waiting_tasks,
             "max_connections": max_connections,
         },
+        "redis_pool_detailed": redis_pool_detailed,
     }
 
 

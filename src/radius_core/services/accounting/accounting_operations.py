@@ -253,9 +253,12 @@ async def _handle_start_packet(
     session_new.Acct_Session_Time = 0
     session_new.Acct_Stop_Time = None
 
-    await asyncio.gather(
-        save_session_to_redis(session_new, redis_key, redis),
-        send_to_session_queue(session_new),
+    # Redis операция - ждем завершения (критично)
+    await save_session_to_redis(session_new, redis_key, redis)
+
+    # RabbitMQ операции - запускаем в фоне без ожидания
+    asyncio.create_task(
+        _send_to_queue_with_logging(send_to_session_queue, session_new, "session_queue")
     )
 
 
@@ -269,23 +272,54 @@ async def _handle_interim_update_packet(
     redis,
 ) -> None:
     """Обрабатывает пакет Interim-Update"""
-    tasks = []
     if session_stored:
         logger.debug("Обработка Interim-Update для существующей сессии")
         session_new.Acct_Update_Time = event_time
-        tasks.append(send_to_traffic_queue(session_new, session_stored))
+        # RabbitMQ операции - запускаем в фоне без ожидания
+        asyncio.create_task(
+            _send_to_queue_with_logging(
+                lambda data: send_to_traffic_queue(
+                    data, session_stored if session_stored else None
+                ),
+                session_new,
+                "traffic_queue",
+            )
+        )
     else:
         logger.info("Interim-Update без активной сессии, создание новой")
         session_new.Acct_Start_Time = datetime.fromtimestamp(
             event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
         )
         session_new.Acct_Update_Time = event_time
-        tasks.append(send_to_traffic_queue(session_new, None))
+        # RabbitMQ операции - запускаем в фоне без ожидания
+        asyncio.create_task(
+            _send_to_queue_with_logging(
+                lambda data: send_to_traffic_queue(data, None),
+                session_new,
+                "traffic_queue",
+            )
+        )
 
     if not is_service_session:
-        tasks.append(save_session_to_redis(session_new, redis_key, redis))
-        tasks.append(send_to_session_queue(session_new))
-    await asyncio.gather(*tasks)
+        # Redis операция - ждем завершения (критично)
+        await save_session_to_redis(session_new, redis_key, redis)
+        # RabbitMQ операции - запускаем в фоне
+        asyncio.create_task(
+            _send_to_queue_with_logging(
+                send_to_session_queue, session_new, "session_queue"
+            )
+        )
+    else:
+        # Только RabbitMQ операции для сервисных сессий
+        asyncio.create_task(
+            _send_to_queue_with_logging(
+                lambda data: send_to_traffic_queue(
+                    data, session_stored if session_stored else None
+                ),
+                session_new,
+                "traffic_queue",
+            )
+        )
 
 
 async def _handle_stop_packet(
@@ -308,15 +342,26 @@ async def _handle_stop_packet(
     else:
         session_new.Acct_Start_Time = session_stored.Acct_Start_Time
 
-    await asyncio.gather(
-        send_to_session_queue(session_new, stoptime=True),
-        send_to_traffic_queue(
+    # Redis операция - ждем завершения (критично)
+    if session_stored:
+        await delete_session_from_redis(redis_key, redis)
+
+    # RabbitMQ операции - запускаем в фоне без ожидания
+    asyncio.create_task(
+        _send_to_queue_with_logging(
+            lambda data: send_to_session_queue(data, stoptime=True),
             session_new,
-            session_stored if session_stored else None,
-        ),
-        delete_session_from_redis(redis_key, redis)
-        if session_stored
-        else asyncio.sleep(0),
+            "session_queue",
+        )
+    )
+    asyncio.create_task(
+        _send_to_queue_with_logging(
+            lambda data: send_to_traffic_queue(
+                data, session_stored if session_stored else None
+            ),
+            session_new,
+            "traffic_queue",
+        )
     )
 
 
@@ -344,17 +389,35 @@ async def _merge_and_close_session(
     session_to_close.Acct_Stop_Time = event_time
     session_to_close.Acct_Update_Time = event_time
 
-    tasks = [
-        send_to_session_queue(session_to_close, stoptime=True),
-        send_to_traffic_queue(session_to_close, session_stored),
-    ]
+    # Redis операция - ждем завершения (критично)
+    await delete_session_from_redis(redis_key, redis)
+
+    # RabbitMQ операции - запускаем в фоне без ожидания
+    asyncio.create_task(
+        _send_to_queue_with_logging(
+            lambda data: send_to_session_queue(data, stoptime=True),
+            session_to_close,
+            "session_queue",
+        )
+    )
+    asyncio.create_task(
+        _send_to_queue_with_logging(
+            lambda data: send_to_traffic_queue(
+                data, session_stored if session_stored else None
+            ),
+            session_to_close,
+            "traffic_queue",
+        )
+    )
 
     if send_coa:
-        tasks.append(send_coa_session_kill(session_to_close, rabbitmq))
-
-    tasks.append(delete_session_from_redis(redis_key, redis))
-
-    await asyncio.gather(*tasks)
+        asyncio.create_task(
+            _send_to_queue_with_logging(
+                lambda data: send_coa_session_kill(data, rabbitmq),
+                session_to_close,
+                "coa_queue",
+            )
+        )
 
     if log_msg:
         logger.info(log_msg)
@@ -364,3 +427,15 @@ async def _merge_and_close_session(
     return AccountingResponse(
         action="kill", reason=reason, session_id=session_unique_id
     )
+
+
+async def _send_to_queue_with_logging(queue_func, data, queue_name: str):
+    """Отправка в очередь с логированием ошибок без блокировки"""
+    try:
+        result = await queue_func(data)
+        if result:
+            logger.debug(f"Сообщение успешно отправлено в {queue_name}")
+        else:
+            logger.warning(f"Сообщение не отправлено в {queue_name} (вернулся False)")
+    except Exception as e:
+        logger.error(f"Ошибка отправки в {queue_name}: {e}", exc_info=True)

@@ -115,17 +115,6 @@ async def get_redis_connection():
         pass
 
 
-@asynccontextmanager
-async def get_redis_connection_optimized():
-    """Оптимизированный контекстный менеджер для пакетных операций"""
-    redis_client_conn = await redis_client.get_client()
-    try:
-        yield redis_client_conn
-    finally:
-        # Соединение возвращается в пул автоматически
-        pass
-
-
 async def get_redis() -> redis.Redis:
     """Получить Redis клиент"""
 
