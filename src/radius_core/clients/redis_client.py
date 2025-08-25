@@ -93,6 +93,12 @@ class RedisClient:
         """Получить семафор для ограничения одновременных операций"""
         return self._semaphore
 
+    def __getattr__(self, name):
+        """Делегируем все неизвестные методы к обычному Redis клиенту"""
+        if self._redis is None:
+            raise AttributeError(f"Redis client not initialized, cannot access {name}")
+        return getattr(self._redis, name)
+
 
 # Глобальный экземпляр клиента
 redis_client = RedisClient()

@@ -13,9 +13,9 @@ from ..clients.rabbitmq_client import get_rabbitmq_client
 
 async def get_redis_connection() -> AsyncGenerator[Redis, None]:
     """Получение подключения к Redis."""
-
+    redis_conn = await redis_client.get_client()
     try:
-        yield redis_client
+        yield redis_conn
     finally:
         pass
 
