@@ -106,14 +106,13 @@ redis_client = RedisClient()
 
 @asynccontextmanager
 async def get_redis_connection():
-    """Контекстный менеджер для получения Redis соединения с ограничением одновременных операций"""
-    async with redis_client.semaphore:
-        redis_client_conn = await redis_client.get_client()
-        try:
-            yield redis_client_conn
-        finally:
-            # Соединение возвращается в пул автоматически
-            pass
+    """Контекстный менеджер для получения Redis соединения"""
+    redis_client_conn = await redis_client.get_client()
+    try:
+        yield redis_client_conn
+    finally:
+        # Соединение возвращается в пул автоматически
+        pass
 
 
 @asynccontextmanager
@@ -155,10 +154,9 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
             command_name,
             command_args,
         )
-        async with redis_client.semaphore:
-            result = await asyncio.wait_for(
-                redis_conn.execute_command(*args), timeout=eff_timeout
-            )
+        result = await asyncio.wait_for(
+            redis_conn.execute_command(*args), timeout=eff_timeout
+        )
         logger.debug("Redis command result: %s", result)
         return result
     except asyncio.TimeoutError:
@@ -191,27 +189,25 @@ async def execute_redis_pipeline(
 
     try:
         if redis_conn is None:
-            async with redis_client.semaphore:
-                redis_client_conn = await redis_client.get_client()
-                pipe = redis_client_conn.pipeline()
+            redis_client_conn = await redis_client.get_client()
+            pipe = redis_client_conn.pipeline()
 
-                # Добавляем команды в pipeline
-                for cmd in commands:
-                    pipe.execute_command(*cmd)
+            # Добавляем команды в pipeline
+            for cmd in commands:
+                pipe.execute_command(*cmd)
 
-                # Выполняем весь пакет
-                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+            # Выполняем весь пакет
+            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
         else:
-            # Используем переданный клиент с семафором
-            async with redis_client.semaphore:
-                pipe = redis_conn.pipeline()
+            # Используем переданный клиент
+            pipe = redis_conn.pipeline()
 
-                # Добавляем команды в pipeline
-                for cmd in commands:
-                    pipe.execute_command(*cmd)
+            # Добавляем команды в pipeline
+            for cmd in commands:
+                pipe.execute_command(*cmd)
 
-                # Выполняем весь пакет
-                result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
+            # Выполняем весь пакет
+            result = await asyncio.wait_for(pipe.execute(), timeout=eff_timeout)
 
         return result
     except asyncio.TimeoutError:

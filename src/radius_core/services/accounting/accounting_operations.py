@@ -71,12 +71,13 @@ async def process_accounting(
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
 
-        # Обработка сервисной сессии
+        # Обработка сервисной сессии (запускаем в фоне)
         if service and login:
             session_id = session_req.Acct_Session_Id
             if ":" in session_id:
                 logger.debug("Обработка сервисной сессии %s", session_id)
-                await update_main_session_service(session_req, redis)
+                # Запускаем в фоне, не ждем завершения
+                asyncio.create_task(update_main_session_service(session_req, redis))
 
         logger.debug("Данные старой записи сессии: %s", session_stored)
         logger.debug("Найденный логин: %s", login)

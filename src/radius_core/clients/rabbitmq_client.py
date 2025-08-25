@@ -27,12 +27,14 @@ class RabbitMQClient:
         self._channel: Optional[aio_pika.abc.AbstractChannel] = None
         self._exchange: Optional[aio_pika.abc.AbstractExchange] = None
         self._lock = asyncio.Lock()
+        self._connection_established = False
 
     async def get_channel(self) -> aio_pika.abc.AbstractChannel:
         """Получить канал RabbitMQ с автоматической настройкой"""
-        if self._channel is None or self._channel.is_closed:
+        # Проверяем только если соединение не установлено
+        if not self._connection_established or self._channel is None:
             async with self._lock:
-                if self._channel is None or self._channel.is_closed:
+                if not self._connection_established or self._channel is None:
                     try:
                         self._connection = await aio_pika.connect_robust(
                             AMQP_URL,
@@ -52,8 +54,10 @@ class RabbitMQClient:
                         # Создаем очереди
                         # await self._setup_queues()
 
+                        self._connection_established = True
                         logger.info("Соединение с RabbitMQ успешно установлено")
                     except Exception:
+                        self._connection_established = False
                         logger.error("Не удалось установить соединение с RabbitMQ")
                         raise
         return self._channel
@@ -120,6 +124,8 @@ class RabbitMQClient:
 
         except (AttributeError, ConnectionError, TimeoutError) as e:
             logger.error("Не удалось отправить сообщение в %s: %s", routing_key, e)
+            # Сбрасываем флаг соединения для переподключения
+            self._connection_established = False
             return False
 
     async def close(self):
@@ -135,12 +141,13 @@ class RabbitMQClient:
             self._channel = None
             self._connection = None
             self._exchange = None
+            self._connection_established = False
 
     async def health_check(self) -> bool:
         """Проверка здоровья соединения"""
         try:
             await self.get_channel()
-            return self._channel is not None and not self._channel.is_closed
+            return self._connection_established and self._channel is not None
         except (ConnectionError, TimeoutError, AttributeError) as e:
             logger.error("Проверка здоровья соединения с RabbitMQ не прошла: %s", e)
             return False

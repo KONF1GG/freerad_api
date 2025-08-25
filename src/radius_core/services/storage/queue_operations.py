@@ -16,6 +16,20 @@ from ...config import (
 
 logger = logging.getLogger(__name__)
 
+# Кэш для UTC timezone
+_UTC_TZ = timezone.utc
+
+
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Быстрое приведение времени к UTC"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=_UTC_TZ)
+    if dt.tzinfo == _UTC_TZ:
+        return dt
+    return dt.astimezone(_UTC_TZ)
+
 
 async def send_to_session_queue(
     session_data: SessionData, stoptime: bool = False
@@ -24,60 +38,29 @@ async def send_to_session_queue(
     logger.info("Отправка сессии в очередь: %s", session_data.Acct_Unique_Session_Id)
 
     try:
-        # Убеждаемся что все времена в UTC формате
+        # Быстрая оптимизация временных меток
         if session_data.Event_Timestamp:
-            # Приводим к UTC если нужно
-            if session_data.Event_Timestamp.tzinfo is None:
-                session_data.Event_Timestamp = session_data.Event_Timestamp.replace(
-                    tzinfo=timezone.utc
-                )
-            else:
-                session_data.Event_Timestamp = session_data.Event_Timestamp.astimezone(
-                    timezone.utc
-                )
+            session_data.Event_Timestamp = _ensure_utc(session_data.Event_Timestamp)
 
         # Устанавливаем Acct_Update_Time если он еще не установлен
         if not session_data.Acct_Update_Time:
             session_data.Acct_Update_Time = (
-                session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
-            )
-
-        # Приводим Acct_Update_Time к UTC
-        if session_data.Acct_Update_Time.tzinfo is None:
-            session_data.Acct_Update_Time = session_data.Acct_Update_Time.replace(
-                tzinfo=timezone.utc
+                session_data.Event_Timestamp or datetime.now(tz=_UTC_TZ)
             )
         else:
-            session_data.Acct_Update_Time = session_data.Acct_Update_Time.astimezone(
-                timezone.utc
-            )
+            session_data.Acct_Update_Time = _ensure_utc(session_data.Acct_Update_Time)
 
         # Приводим Acct_Start_Time к UTC если он есть
         if session_data.Acct_Start_Time:
-            if session_data.Acct_Start_Time.tzinfo is None:
-                session_data.Acct_Start_Time = session_data.Acct_Start_Time.replace(
-                    tzinfo=timezone.utc
-                )
-            else:
-                session_data.Acct_Start_Time = session_data.Acct_Start_Time.astimezone(
-                    timezone.utc
-                )
+            session_data.Acct_Start_Time = _ensure_utc(session_data.Acct_Start_Time)
 
         # Обрабатываем Acct_Stop_Time
         if stoptime:
             if not session_data.Acct_Stop_Time:
                 session_data.Acct_Stop_Time = (
-                    session_data.Event_Timestamp or datetime.now(tz=timezone.utc)
+                    session_data.Event_Timestamp or datetime.now(tz=_UTC_TZ)
                 )
-            # Приводим к UTC
-            if session_data.Acct_Stop_Time.tzinfo is None:
-                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.replace(
-                    tzinfo=timezone.utc
-                )
-            else:
-                session_data.Acct_Stop_Time = session_data.Acct_Stop_Time.astimezone(
-                    timezone.utc
-                )
+            session_data.Acct_Stop_Time = _ensure_utc(session_data.Acct_Stop_Time)
             logger.debug(
                 "Сессия будет остановлена: %s", session_data.Acct_Unique_Session_Id
             )
@@ -108,8 +91,8 @@ async def send_to_traffic_queue(
     """Отправка данных трафика в RabbitMQ очередь для сохранения"""
 
     try:
-        # Определяем поля трафика и их алиасы
-        traffic_fields = [
+        # Определяем поля трафика и их алиасы (выносим в константу)
+        TRAFFIC_FIELDS = [
             ("Acct_Input_Octets", "Acct-Input-Octets"),
             ("Acct_Output_Octets", "Acct-Output-Octets"),
             ("Acct_Input_Packets", "Acct-Input-Packets"),
@@ -127,12 +110,6 @@ async def send_to_traffic_queue(
             "timestamp": now_str(),
         }
 
-        # Добавляем поля трафика с алиасами
-        for field, alias in traffic_fields:
-            value = getattr(session_new, field, 0)
-            if value is not None:
-                traffic_data[alias] = value
-
         # Если есть старая сессия, вычисляем дельту
         if session_stored:
             logger.debug(
@@ -140,7 +117,7 @@ async def send_to_traffic_queue(
             )
             negative_deltas = []
 
-            for field, alias in traffic_fields:
+            for field, alias in TRAFFIC_FIELDS:
                 new_value = getattr(session_new, field, 0) or 0
                 old_value = getattr(session_stored, field, 0) or 0
                 delta = new_value - old_value
@@ -164,6 +141,12 @@ async def send_to_traffic_queue(
                     session_new.Acct_Unique_Session_Id,
                     "; ".join(negative_deltas),
                 )
+        else:
+            # Добавляем поля трафика с алиасами для новой сессии
+            for field, alias in TRAFFIC_FIELDS:
+                value = getattr(session_new, field, 0)
+                if value is not None:
+                    traffic_data[alias] = value
 
         traffic_model = TrafficData(**traffic_data)
 
