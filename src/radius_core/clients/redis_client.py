@@ -147,10 +147,16 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
     """Выполнить команду Redis с тайм-аутом"""
     eff_timeout = timeout if timeout is not None else REDIS_COMMAND_TIMEOUT
     try:
+        logger.debug(
+            "Executing Redis command: %s with args: %s",
+            args[0] if args else "unknown",
+            args[1:] if len(args) > 1 else [],
+        )
         async with redis_client.semaphore:
             result = await asyncio.wait_for(
                 redis_conn.execute_command(*args), timeout=eff_timeout
             )
+        logger.debug("Redis command result: %s", result)
         return result
     except asyncio.TimeoutError:
         logger.error(

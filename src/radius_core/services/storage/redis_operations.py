@@ -18,7 +18,9 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
     Получение сессии из Redis и преобразование в модель RedisSessionData.
     """
     try:
+        logger.debug("Getting session from Redis key: %s", redis_key)
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
+        logger.debug("JSON.GET result for key %s: %s", redis_key, session_data)
         if not session_data:
             logger.debug("No session data found for key: %s", redis_key)
             return None

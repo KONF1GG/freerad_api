@@ -36,8 +36,20 @@ async def search_redis(
         Optional[LoginSearchResult]: Результат поиска или None в случае ошибки.
     """
     try:
+        logger.debug(
+            "Search operation: key_type=%s, query=%s, index=%s, redis_key=%s",
+            key_type,
+            query,
+            index,
+            redis_key,
+        )
+
         if key_type == "FT.SEARCH":
+            logger.debug(
+                "Executing FT.SEARCH on index: %s with query: %s", index, query
+            )
             result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+            logger.debug("FT.SEARCH result: %s", result)
             if not result or result[0] == 0:
                 logger.debug("No results for %s query: %s", key_type, query)
                 return None
@@ -49,7 +61,9 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
+            logger.debug("Executing GET on key: %s", redis_key)
             result = await execute_redis_command(redis, "GET", redis_key)
+            logger.debug("GET result: %s", result)
             if not result:
                 logger.debug("No results for %s key: %s", key_type, redis_key)
                 return None
