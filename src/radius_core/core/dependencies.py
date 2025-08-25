@@ -7,13 +7,13 @@ from fastapi import Depends
 from redis.asyncio import Redis
 from aio_pika.abc import AbstractChannel
 
-from ..clients.redis_client import get_redis
+from ..clients.redis_client import redis_client
 from ..clients.rabbitmq_client import get_rabbitmq_client
 
 
 async def get_redis_connection() -> AsyncGenerator[Redis, None]:
     """Получение подключения к Redis."""
-    redis_client = await get_redis()
+
     try:
         yield redis_client
     finally:
