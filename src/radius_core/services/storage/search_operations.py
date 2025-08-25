@@ -6,6 +6,7 @@ import re
 from typing import Optional, List, Any
 from ...models import SessionData, LoginSearchResult
 from ...clients import execute_redis_command
+from .vlan_fix import fix_vlan_fields_in_index
 from ...utils import is_mac_username, mac_from_username, mac_from_hex, nasportid_parse
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
@@ -48,8 +49,28 @@ async def search_redis(
             logger.debug(
                 "Executing FT.SEARCH on index: %s with query: %s", index, query
             )
-            result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-            logger.debug("FT.SEARCH result: %s", result)
+            try:
+                result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+                logger.debug("FT.SEARCH result: %s", result)
+            except Exception as e:
+                if "WRONGTYPE" in str(e):
+                    logger.warning(
+                        "WRONGTYPE error on index %s, attempting to fix vlan fields",
+                        index,
+                    )
+                    # Пытаемся исправить поля vlan в поврежденных документах
+                    await fix_vlan_fields_in_index(redis, index)
+                    # Повторяем поиск
+                    try:
+                        result = await execute_redis_command(
+                            redis, "FT.SEARCH", index, query
+                        )
+                        logger.debug("FT.SEARCH result after fix: %s", result)
+                    except Exception as e2:
+                        logger.error("Search still fails after vlan fix: %s", e2)
+                        return None
+                else:
+                    raise
             if not result or result[0] == 0:
                 logger.debug("No results for %s query: %s", key_type, query)
                 return None
