@@ -174,6 +174,10 @@ class LoginBase(BaseModel):
 
     @field_validator("ip_addr", mode="before")
     def set_ip_addr_from_ipAddress(cls, values):
+        # Проверяем, что values не None
+        if values is None:
+            return None
+
         # Если ip_addr не задан, но есть ipAddress — используем его
         if "ip_addr" not in values or values.get("ip_addr") is None:
             ip_addr = values.get("ipAddress")
