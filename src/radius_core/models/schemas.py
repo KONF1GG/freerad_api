@@ -169,7 +169,9 @@ class LoginBase(BaseModel):
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
     #    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
-        default=None, description="IP-адрес из данных логина", alias="ipAddress"
+        default=None,
+        description="IP-адрес из данных логина или ipAddress из device",
+        alias="ipAddress",
     )
 
     servicecats: Optional[ServiceCats] = None

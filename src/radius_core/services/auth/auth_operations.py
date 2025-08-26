@@ -36,8 +36,12 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         # Пользователь не найден
         if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
-            auth_response = _build_reject_response(auth_response, f"User not found [{data.User_Name}]")
-            await _save_auth_log(data, None, "Access-Accept", f"User not found [{data.User_Name}]")
+            auth_response = _build_reject_response(
+                auth_response, f"User not found [{data.User_Name}]"
+            )
+            await _save_auth_log(
+                data, None, "Access-Accept", f"User not found [{data.User_Name}]"
+            )
             return auth_response.to_radius()
 
         # Обработка по типу авторизации
@@ -95,7 +99,7 @@ async def _handle_video_auth(
 ) -> AuthResponse:
     """Обрабатывает авторизацию видеокамер"""
     logger.debug("Авторизация видеокамеры: %s", login.login)
-    auth_response.reply_framed_ip_address = getattr(login, "ipAddress", "")
+    auth_response.reply_framed_ip_address = login.ip_addr
     auth_response.reply_erx_service_activate = "INET-VIDEO()"
     auth_response.reply_erx_virtual_router_name = "video"
     auth_response.reply_nas_port_id = f"{data.User_Name or ''} | {login.login or ''} | {data.ADSL_Agent_Remote_Id or ''}"
