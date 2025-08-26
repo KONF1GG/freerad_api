@@ -36,8 +36,8 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         # Пользователь не найден
         if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
-            auth_response = _build_reject_response(auth_response, "User not found")
-            await _save_auth_log(data, None, "Access-Accept", "User not found")
+            auth_response = _build_reject_response(auth_response, f"User not found [{data.User_Name}]")
+            await _save_auth_log(data, None, "Access-Accept", f"User not found [{data.User_Name}]")
             return auth_response.to_radius()
 
         # Обработка по типу авторизации
@@ -85,7 +85,7 @@ def _build_reject_response(auth_response: AuthResponse, reason: str) -> AuthResp
     auth_response.reply_message = {"value": reason}
     auth_response.reply_framed_pool = "novlan"
     auth_response.reply_erx_virtual_router_name = "bng"
-    auth_response.reply_erx_service_activate = "NOVLAN()"
+    auth_response.reply_erx_service_activate = "NOINET-NOVLAN()"
     auth_response.control_auth_type = {"value": "Accept"}
     return auth_response
 
