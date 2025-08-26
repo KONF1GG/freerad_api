@@ -169,8 +169,18 @@ class LoginBase(BaseModel):
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
     #    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
-        default=None, description="IP-адрес из данных логина"
+        default=None, description="IP-адрес из данных логина", alias="ipAddress"
     )
+
+    @field_validator(mode="before")
+    def set_ip_addr_from_ipAddress(cls, values):
+        # Если ip_addr не задан, но есть ipAddress — используем его
+        if "ip_addr" not in values or values.get("ip_addr") is None:
+            ip_addr = values.get("ipAddress")
+            if ip_addr is not None:
+                values["ip_addr"] = ip_addr
+        return values
+
     servicecats: Optional[ServiceCats] = None
 
     ipv6: Optional[str] = None
