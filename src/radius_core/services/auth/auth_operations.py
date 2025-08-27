@@ -197,8 +197,10 @@ def _configure_regular_services(
     # Реальник
     if login.ip_addr:
         auth_response.reply_framed_ip_address = login.ip_addr
+        auth_response.reply_erx_virtual_router_name = "bng-real"
     # Серые пулы
     else:
+        auth_response.reply_erx_virtual_router_name = "bng"
         auth_response.reply_framed_pool = "pool-" + nasportid["psiface"]
 
     # IPv6 только одна сессия и активная
@@ -209,14 +211,6 @@ def _configure_regular_services(
     ):
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
-
-    # Устанавливаем routing-instance в зависимости от типа пользователя
-    if login.ip_addr:
-        # Реальник - используем bng-real
-        auth_response.reply_erx_virtual_router_name = "bng-real"
-    else:
-        # Серый пул - используем bng
-        auth_response.reply_erx_virtual_router_name = "bng"
 
     if login.login == "znvpn7132":
         auth_response.reply_framed_route = "80.244.41.248/29"
