@@ -88,6 +88,7 @@ def _build_reject_response(auth_response: AuthResponse, reason: str) -> AuthResp
     """Строит ответ с отклонением авторизации"""
     auth_response.reply_message = {"value": reason}
     auth_response.reply_framed_pool = "novlan"
+    # Для отклоненных запросов используем bng (по умолчанию)
     auth_response.reply_erx_virtual_router_name = "bng"
     auth_response.reply_erx_service_activate = "NOINET-NOVLAN()"
     auth_response.control_auth_type = {"value": "Accept"}
@@ -209,7 +210,13 @@ def _configure_regular_services(
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
 
-    auth_response.reply_erx_virtual_router_name = "bng"
+    # Устанавливаем routing-instance в зависимости от типа пользователя
+    if login.ip_addr:
+        # Реальник - используем bng-real
+        auth_response.reply_erx_virtual_router_name = "bng-real"
+    else:
+        # Серый пул - используем bng
+        auth_response.reply_erx_virtual_router_name = "bng"
 
     if login.login == "znvpn7132":
         auth_response.reply_framed_route = "80.244.41.248/29"

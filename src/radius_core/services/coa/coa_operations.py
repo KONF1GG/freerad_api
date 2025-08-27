@@ -109,7 +109,7 @@ async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
     """
     try:
         session_data = session_req.model_dump(by_alias=True)
-        logger.debug(f"Данные сессии для отправки Coa kill: {session_data}")
+        logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
         # Отправляем CoA kill запрос в очередь
         success = await send_coa_to_queue("kill", session_data, rabbitmq)
