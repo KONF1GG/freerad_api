@@ -8,6 +8,8 @@ from fastapi import HTTPException
 
 from radius_core.models.schemas import EnrichedSessionData
 
+from radius_core.models.schemas import EnrichedSessionData
+
 from ...config import RADIUS_SESSION_PREFIX
 from ..storage.queue_operations import (
     send_to_session_queue,
@@ -225,28 +227,33 @@ def _prepare_session_data(
     session_stored: SessionData | None,
     session_req: EnrichedSessionData,
     is_service_session: bool,
+    session_stored: SessionData | None,
+    session_req: EnrichedSessionData,
+    is_service_session: bool,
 ) -> SessionData:
     """Подготавливает данные сессии для обработки"""
     if session_stored:
-        if session_req.Acct_Status_Type != "Stop":
-            logger.debug("Обогащение существующей сессии новыми данными")
-            session_stored_dict = session_stored.model_dump(by_alias=True)
-            session_req_dict = session_req.model_dump(by_alias=True)
-            # Для несервисных сессий не обновляем ERX-Service-Session
-            if not is_service_session and "ERX-Service-Session" in session_req_dict:
-                session_req_dict.pop("ERX-Service-Session")
-            session_stored_dict.update(session_req_dict)
-            return SessionData(**session_stored_dict)
-        else:
-            logger.debug("STOP пакет: слияние данных из session_stored в session_req")
-            session_stored_dict = session_stored.model_dump(by_alias=True)
-            session_req_dict = session_req.model_dump(by_alias=True)
-            # Для несервисных сессий не обновляем ERX-Service-Session
-            if not is_service_session and "ERX-Service-Session" in session_stored_dict:
-                session_stored_dict.pop("ERX-Service-Session")
-            session_req_dict.update(session_stored_dict)
-            return SessionData(**session_req_dict)
+        logger.debug("Обогащение существующей сессии новыми данными")
+        session_stored_dict = session_stored.model_dump(by_alias=True)
+        session_req_dict = session_req.model_dump(by_alias=True)
 
+        old_login = session_stored_dict.get("login", None)
+
+        # Для несервисных сессий не обновляем ERX_Service_Session
+        if not is_service_session and "ERX-Service-Session" in session_req_dict:
+            session_req_dict.pop("ERX-Service-Session")
+
+        if old_login != session_req.login:
+            logger.debug(
+                "Логин изменился с %s на %s в STOP пакете - взяли старый логин %s",
+                old_login,
+                session_req.login,
+                session_req.Acct_Unique_Session_Id,
+            )
+            session_req_dict.pop("login")
+
+        session_stored_dict.update(session_req_dict)
+        return SessionData(**session_stored_dict)
     else:
         logger.debug("Создание новой сессии из входящих данных")
         session_req_dict = session_req.model_dump(by_alias=True)
