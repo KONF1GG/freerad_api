@@ -20,6 +20,7 @@ async def send_coa_to_queue(
     session_data: Dict[str, Any],
     rabbitmq,
     attributes: Optional[Dict[str, Any]] = None,
+    reason: Optional[str] = None,
 ) -> bool:
     """
     Отправка CoA запроса в очередь RabbitMQ
@@ -41,7 +42,7 @@ async def send_coa_to_queue(
 
         # Формируем сообщение
         message_data = _build_coa_message(
-            request_type, processed_session_data, attributes
+            request_type, reason, processed_session_data, attributes
         )
 
         # Отправляем сообщение в очередь
@@ -66,7 +67,7 @@ async def send_coa_to_queue(
 
 
 def _process_session_data_for_coa(session_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Обрабатывает данные сессии для отправки в CoA очередь"""
+    """Преобразует datetime объекты в строки"""
     processed_session_data = {}
     for key, value in session_data.items():
         if isinstance(value, datetime):
@@ -80,10 +81,12 @@ def _build_coa_message(
     request_type: str,
     session_data: Dict[str, Any],
     attributes: Optional[Dict[str, Any]] = None,
+    reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Строит сообщение для CoA запроса"""
     message_data = {
         "type": request_type,
+        "reason": reason,
         "session_data": session_data,
         "timestamp": datetime.now(tz=timezone.utc).isoformat(),
         "request_id": f"{request_type}_{session_data.get('Acct-Session-Id', 'unknown')}_{int(time.time())}",
@@ -96,7 +99,9 @@ def _build_coa_message(
     return message_data
 
 
-async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
+async def send_coa_session_kill(
+    session_req: SessionData, rabbitmq, reason: Optional[str] = None
+) -> bool:
     """
     Отправка команды на завершение сессии через CoA (в очередь)
 
@@ -112,7 +117,7 @@ async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
         logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
         # Отправляем CoA kill запрос в очередь
-        success = await send_coa_to_queue("kill", session_data, rabbitmq)
+        success = await send_coa_to_queue("kill", session_data, rabbitmq, reason=reason)
 
         if success:
             logger.info(
@@ -137,7 +142,10 @@ async def send_coa_session_kill(session_req: SessionData, rabbitmq) -> bool:
 
 
 async def send_coa_session_set(
-    session_req: SessionData, rabbitmq, attributes: Dict[str, Any]
+    session_req: SessionData,
+    rabbitmq,
+    attributes: Dict[str, Any],
+    reason: Optional[str] = None,
 ) -> bool:
     """
     Отправка команды на обновление атрибутов сессии через CoA (в очередь)
@@ -155,7 +163,13 @@ async def send_coa_session_set(
         logger.debug("Данные сессии для отправки Coa update: %s", session_data)
 
         # Отправляем CoA update запрос в очередь
-        success = await send_coa_to_queue("update", session_data, rabbitmq, attributes)
+        success = await send_coa_to_queue(
+            "update",
+            session_data,
+            rabbitmq,
+            attributes,
+            reason=reason,
+        )
 
         if success:
             logger.info(

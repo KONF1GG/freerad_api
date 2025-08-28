@@ -367,7 +367,7 @@ async def _merge_and_close_session(
     rabbitmq=None,
     send_coa: bool = False,
     log_msg: Optional[str] = None,
-    reason: str = "session closed",
+    reason: str = "",
 ) -> AccountingResponse:
     """Слить данные входящего пакета в существующую сессию,
     опционально отправить CoA kill и удалить сессию из Redis"""
@@ -405,7 +405,7 @@ async def _merge_and_close_session(
     if send_coa:
         asyncio.create_task(
             _send_to_queue_with_logging(
-                lambda data: send_coa_session_kill(data, rabbitmq),
+                lambda data: send_coa_session_kill(data, rabbitmq, reason=reason),
                 session_to_close,
                 "coa_queue",
             )
