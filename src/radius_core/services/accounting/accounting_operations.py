@@ -8,8 +8,6 @@ from fastapi import HTTPException
 
 from radius_core.models.schemas import EnrichedSessionData
 
-from radius_core.models.schemas import EnrichedSessionData
-
 from ...config import RADIUS_SESSION_PREFIX
 from ..storage.queue_operations import (
     send_to_session_queue,
@@ -224,9 +222,6 @@ async def _handle_session_closure_conditions(
 
 
 def _prepare_session_data(
-    session_stored: SessionData | None,
-    session_req: EnrichedSessionData,
-    is_service_session: bool,
     session_stored: SessionData | None,
     session_req: EnrichedSessionData,
     is_service_session: bool,
