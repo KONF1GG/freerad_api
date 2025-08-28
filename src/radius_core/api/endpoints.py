@@ -11,6 +11,8 @@ import os
 import logging
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
+
+from radius_core.services.storage.search_operations import find_login_by_session
 from ..models.schemas import (
     AccountingData,
     AccountingResponse,
@@ -217,7 +219,7 @@ async def find_login_by_session_endpoint(
             logger.info("Логин не найден для пользователя: %s", data.User_Name)
             return {"result": None}
         logger.info("Логин найден для пользователя: %s", data.User_Name)
-        return {"result": result.dict()}
+        return {"result": result.model_dump()}
     except HTTPException:
         raise
     except Exception as e:

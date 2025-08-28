@@ -27,6 +27,7 @@ AMQP_COA_QUEUE: str = os.getenv("AMQP_COA_QUEUE", "coa_requests")
 RADIUS_SESSION_PREFIX: str = "radius:session:"
 RADIUS_LOGIN_PREFIX: str = "login:"
 RADIUS_INDEX_NAME: str = "idx:radius:login"
+RADIUS_INDEX_NAME_SESSION: str = "idx:radius:session"
 
 PROMETHEUS_MULTIPROC_DIR: str = os.getenv(
     "PROMETHEUS_MULTIPROC_DIR", "/app/prometheus_multiproc_dir"

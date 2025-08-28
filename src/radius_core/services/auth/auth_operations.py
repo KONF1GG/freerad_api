@@ -36,7 +36,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         # Пользователь не найден
         if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
-            auth_response = _build_reject_response(
+            auth_response = _build_noinet_novlan(
                 auth_response, f"User not found [{data.User_Name}]"
             )
             await _save_auth_log(
@@ -66,11 +66,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             else None
         )
 
-        # Логируем успешную авторизацию
-        if reply_code == "Access-Accept":
-            await _save_auth_log(
-                data, login, reply_code, reason_text or "Authorization successful"
-            )
+        await _save_auth_log(
+            data, login, reply_code, reason_text or "Authorization successful"
+        )
 
         logger.info(
             "Авторизация завершена: %s для пользователя %s", reply_code, data.User_Name
@@ -84,8 +82,8 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-def _build_reject_response(auth_response: AuthResponse, reason: str) -> AuthResponse:
-    """Строит ответ с отклонением авторизации"""
+def _build_noinet_novlan(auth_response: AuthResponse, reason: str) -> AuthResponse:
+    """Строит ответ NOINET-NOVLAN"""
     auth_response.reply_message = {"value": reason}
     auth_response.reply_framed_pool = "novlan"
     # Для отклоненных запросов используем bng (по умолчанию)

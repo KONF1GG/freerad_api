@@ -3,6 +3,8 @@
 import json
 import logging
 
+from radius_core.config.settings import RADIUS_INDEX_NAME_SESSION
+
 from ...models import EnrichedSessionData
 from ...clients import execute_redis_command
 
@@ -23,7 +25,7 @@ async def update_main_session_service(
     try:
         service_session_id = service_session_req.Acct_Session_Id
 
-        # Извлекаем основной ID из сервисного (берем часть до двоеточия)
+        # Извлекаем основной ID из сервисного
         if ":" in service_session_id:
             main_session_id = service_session_id.split(":")[0]
         else:
@@ -39,7 +41,7 @@ async def update_main_session_service(
         )
 
         # Поиск основной сессии по полю Acct-Session-Id в индексе
-        index = "idx:radius:session"
+        index = RADIUS_INDEX_NAME_SESSION
         query = f"@Acct\\-Session\\-Id:{{{main_session_id}}}"
         logger.debug("Поиск основной сессии в индексе %s с запросом %s", index, query)
 
