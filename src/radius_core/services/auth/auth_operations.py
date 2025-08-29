@@ -28,7 +28,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         login = await find_login_by_session(data, redis)
         logger.debug("Данные логина: %s", login)
-        session_limit = 2
+        session_limit = 3
 
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
@@ -132,8 +132,8 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(data, login, "Access-Reject", "Session limit exceeded")
-        raise HTTPException(status_code=403, detail="Session limit exceeded")
+        await _save_auth_log(data, login, "Access-Reject", f"Session limit exceeded [{data.User_Name} {login.login}]")
+        raise HTTPException(status_code=403, detail=f"Session limit exceeded [{data.User_Name} {login.login}]")
 
     # Настраиваем сервисы
     auth_response = _configure_regular_services(
@@ -156,8 +156,8 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(data, login, "Access-Reject", "Static IP limit exceeded")
-        raise HTTPException(status_code=403, detail="Static IP limit exceeded")
+        await _save_auth_log(data, login, "Access-Reject", f"Static IP limit exceeded [{login.login} {login.ip_addr}]")
+        raise HTTPException(status_code=403, detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]")
 
     return auth_response
 
