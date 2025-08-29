@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 # from prometheus_fastapi_instrumentator import Instrumentator
 
 from .app_lifecycle import lifecycle_manager
-from .logging_config import logger
 from ..api import router
 
 
@@ -68,7 +67,6 @@ def create_app() -> FastAPI:
     # Подключаем роутер с эндпоинтами
     app.include_router(router)
 
-    logger.info("FastAPI application created and configured")
     return app
 
 

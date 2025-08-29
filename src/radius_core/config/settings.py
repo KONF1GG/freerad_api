@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Настройки логирования
-MAIN_LOG_LEVEL: str = os.getenv("MAIN_LOG_LEVEL", "INFO")
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 EXTERNAL_LOG_LEVEL: str = os.getenv("EXTERNAL_LOG_LEVEL", "WARNING")
+LOG_FILE: str = os.getenv("LOG_FILE", "/var/log/radius_core/radius_log.log")
+LOG_CONSOLE: str = os.getenv("LOG_CONSOLE", "true")
 
 REDIS_URL: str = os.getenv("REDIS_URL", "")
 REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50"))
