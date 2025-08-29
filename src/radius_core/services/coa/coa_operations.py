@@ -42,7 +42,7 @@ async def send_coa_to_queue(
 
         # Формируем сообщение
         message_data = _build_coa_message(
-            request_type, reason, processed_session_data, attributes
+            request_type, processed_session_data, attributes, reason
         )
 
         # Отправляем сообщение в очередь
@@ -68,6 +68,12 @@ async def send_coa_to_queue(
 
 def _process_session_data_for_coa(session_data: Dict[str, Any]) -> Dict[str, Any]:
     """Преобразует datetime объекты в строки"""
+    if not isinstance(session_data, dict):
+        logger.error(
+            "session_data должен быть словарем, получен: %s", type(session_data)
+        )
+        return {}
+
     processed_session_data = {}
     for key, value in session_data.items():
         if isinstance(value, datetime):
