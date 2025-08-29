@@ -43,7 +43,7 @@ class RabbitMQClient:
                         )
                         self._channel = await self._connection.channel()
 
-                        await self._channel.set_qos(prefetch_count=200)
+                        await self._channel.set_qos(prefetch_count=100)
 
                         self._exchange = await self._channel.declare_exchange(
                             name=AMQP_EXCHANGE,

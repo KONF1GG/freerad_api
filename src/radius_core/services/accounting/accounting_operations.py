@@ -377,14 +377,11 @@ async def _merge_and_close_session(
     session_stored_dict.update(session_req_dict)
     session_to_close = SessionData(**session_stored_dict)
 
-    # Update timestamps
     session_to_close.Acct_Stop_Time = event_time
     session_to_close.Acct_Update_Time = event_time
 
-    # Redis операция - удаляем сессию
     await delete_session_from_redis(redis_key, redis)
 
-    # RabbitMQ операции - отправляем в очереди
     asyncio.create_task(
         _send_to_queue_with_logging(
             lambda data: send_to_session_queue(data, stoptime=True),

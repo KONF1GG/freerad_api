@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env файла
 load_dotenv()
 
+# Настройки логирования
+EXTERNAL_LOG_LEVEL: str = os.getenv("EXTERNAL_LOG_LEVEL", "WARNING")
+ENABLE_EXTERNAL_LOGGER_CONFIG: bool = (
+    os.getenv("ENABLE_EXTERNAL_LOGGER_CONFIG", "true").lower() == "true"
+)
+
 REDIS_URL: str = os.getenv("REDIS_URL", "")
 REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50"))
 REDIS_CONCURRENCY: int = int(
