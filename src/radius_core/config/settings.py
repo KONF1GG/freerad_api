@@ -11,9 +11,6 @@ load_dotenv()
 # Настройки логирования
 MAIN_LOG_LEVEL: str = os.getenv("MAIN_LOG_LEVEL", "INFO")
 EXTERNAL_LOG_LEVEL: str = os.getenv("EXTERNAL_LOG_LEVEL", "WARNING")
-ENABLE_EXTERNAL_LOGGER_CONFIG: bool = (
-    os.getenv("ENABLE_EXTERNAL_LOGGER_CONFIG", "true").lower() == "true"
-)
 
 REDIS_URL: str = os.getenv("REDIS_URL", "")
 REDIS_POOL_SIZE: int = int(os.getenv("REDIS_POOL_SIZE", "50"))
