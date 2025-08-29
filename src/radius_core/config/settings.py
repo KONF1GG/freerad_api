@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Настройки логирования
+MAIN_LOG_LEVEL: str = os.getenv("MAIN_LOG_LEVEL", "INFO")
 EXTERNAL_LOG_LEVEL: str = os.getenv("EXTERNAL_LOG_LEVEL", "WARNING")
 ENABLE_EXTERNAL_LOGGER_CONFIG: bool = (
     os.getenv("ENABLE_EXTERNAL_LOGGER_CONFIG", "true").lower() == "true"

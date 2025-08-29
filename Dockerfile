@@ -17,4 +17,4 @@ ENV PROMETHEUS_MULTIPROC_DIR=/app/prometheus_multiproc_dir
 
 WORKDIR /app/src
 
-CMD ["uv", "run", "gunicorn", "-w", "3", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "main:app"]
+CMD ["uv", "run", "gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "main:app"]
