@@ -82,7 +82,7 @@ async def process_accounting(
                 asyncio.create_task(update_main_session_service(session_req, redis))
 
         # Обработка завершения сессии при изменении логина или его отсутствии
-        if session_stored:
+        if session_stored and packet_type != "Stop":
             session_closure_result = await _handle_session_closure_conditions(
                 session_stored,
                 session_req,
