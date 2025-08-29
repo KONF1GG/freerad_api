@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from fastapi import HTTPException
 
-from radius_core.models.schemas import EnrichedSessionData
+from radius_core.models.schemas import EnrichedSessionData, LoginSearchResult
 
 from ...config import RADIUS_SESSION_PREFIX
 from ..storage.queue_operations import (
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 @track_function("radius", "process_accounting")
 async def process_accounting(
-    data: AccountingData, redis, rabbitmq=None
+    data: AccountingData, redis, rabbitmq
 ) -> AccountingResponse:
     """Основная функция обработки аккаунтинга"""
 
@@ -84,14 +84,14 @@ async def process_accounting(
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored and packet_type != "Stop":
             session_closure_result = await _handle_session_closure_conditions(
+                redis,
+                rabbitmq,
+                redis_key,
                 session_stored,
                 session_req,
-                login,
-                redis_key,
-                redis,
                 event_time,
                 session_unique_id,
-                rabbitmq,
+                login,
             )
             if session_closure_result:
                 return session_closure_result
@@ -142,26 +142,27 @@ async def process_accounting(
 
 
 async def _handle_session_closure_conditions(
-    session_stored: Any,
-    session_req: Any,
-    login: Any,
-    redis_key: str,
     redis,
+    rabbitmq,
+    redis_key: str,
+    session_stored: SessionData,
+    session_req: EnrichedSessionData,
     event_time: datetime,
     session_unique_id: str,
-    rabbitmq,
+    login: LoginSearchResult | None = None,
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
-    stored_login = getattr(session_stored, "login", None)
-    stored_auth_type = getattr(session_stored, "auth_type", "UNAUTH")
-    current_login = getattr(login, "login", None)
-    current_auth_type = getattr(login, "auth_type", "UNAUTH")
+    stored_login = session_stored.login
+    # stored_auth_type = getattr(session_stored, "auth_type", "UNAUTH")
+    current_login = login.login if login else None
+    # current_auth_type = getattr(login, "auth_type", "UNAUTH")
 
-    # 1. Нет логина, но сессия авторизована
-    if not login and stored_auth_type != "UNAUTH":
+    # 1. Существующая сессия авторизована, а текущая нет
+    if stored_login and not current_login:
         logger.warning(
-            "Сессия %s найдена авторизованная, но логин не найден. ",
+            "Сессия %s найдена авторизованная, но сейчас логин %s не найден. ",
             session_unique_id,
+            stored_login,
         )
         return await _merge_and_close_session(
             session_stored,
@@ -173,11 +174,11 @@ async def _handle_session_closure_conditions(
             rabbitmq=rabbitmq,
             send_coa=True,
             log_msg=f"Сессия {session_unique_id} завершена: login not found",
-            reason="login not found, session closed",
+            reason="login not found",
         )
 
     # 2. Логин изменился
-    if login and stored_login and stored_login != current_login:
+    if current_login and stored_login and stored_login != current_login:
         logger.warning(
             "Логин изменился с %s на %s, завершаем сессию. %s",
             stored_login,
@@ -194,29 +195,28 @@ async def _handle_session_closure_conditions(
             rabbitmq=rabbitmq,
             send_coa=True,
             log_msg=f"Сессия {session_unique_id} завершена: login mismatch",
-            reason="login mismatch, session closed",
+            reason="login mismatch",
         )
 
     # 3. Сессия была UNAUTH, теперь авторизована
-    if stored_auth_type == "UNAUTH" and current_auth_type != "UNAUTH":
+    if not stored_login and current_login:
         logger.warning(
-            "Сессия %s была UNAUTH, теперь авторизована: %s. %s",
+            "Сессия %s была UNAUTH, теперь логин %s авторизован",
             session_unique_id,
-            login,
-            session_unique_id,
+            current_login,
         )
-        return await _merge_and_close_session(
-            session_stored,
-            session_req,
-            redis_key,
-            redis,
-            event_time,
-            session_unique_id,
-            rabbitmq=rabbitmq,
-            send_coa=True,
-            log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
-            reason="session UNAUTH closed (now authorized)",
-        )
+        # return await _merge_and_close_session(
+        #     session_stored,
+        #     session_req,
+        #     redis_key,
+        #     redis,
+        #     event_time,
+        #     session_unique_id,
+        #     rabbitmq=rabbitmq,
+        #     send_coa=True,
+        #     log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
+        #     reason="session UNAUTH closed (now authorized)",
+        # )
 
     return None
 
