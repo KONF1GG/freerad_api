@@ -29,7 +29,10 @@ from ..data_processing import (
     process_traffic_data,
 )
 
-from ..storage.service_operations import update_main_session_service
+from ..storage.service_operations import (
+    update_main_session_service,
+    update_main_session_from_service,
+)
 
 from ...models import AccountingData, AccountingResponse, SessionData
 from ..coa.coa_operations import send_coa_session_kill
@@ -72,14 +75,19 @@ async def process_accounting(
 
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
+        session_id = session_req.Acct_Session_Id
 
-        # Обработка сервисной сессии (запускаем в фоне)
-        if service and login:
-            session_id = session_req.Acct_Session_Id
-            if ":" in session_id:
-                logger.debug("Обработка сервисной сессии %s", session_id)
-                # Запускаем в фоне, не ждем завершения
-                asyncio.create_task(update_main_session_service(session_req, redis))
+        # Обработка сервисных сессий
+        if service and login and ":" in session_id:
+            logger.debug("Добавление сервиса в основную сессию %s", session_id)
+            # Запускаем в фоне, не ждем завершения
+            asyncio.create_task(update_main_session_service(session_req, redis))
+
+        # Обработка основных сессий - поиск сервисной сессии
+        elif not service and login and ":" not in session_id:
+            logger.debug("Поиск сервисной сессии для основной сессии %s", session_id)
+            # Обновляем данные сессии прямо здесь, синхронно
+            await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored and packet_type != "Stop":
@@ -173,8 +181,8 @@ async def _handle_session_closure_conditions(
             session_unique_id,
             rabbitmq=rabbitmq,
             send_coa=True,
-            log_msg=f"Сессия {session_unique_id} завершена: login not found",
-            reason="login not found",
+            log_msg=f"Сессия {session_unique_id} завершена: login not found but session authorized before",
+            reason="login not found but session authorized before",
         )
 
     # 2. Логин изменился
