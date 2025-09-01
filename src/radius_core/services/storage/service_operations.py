@@ -139,7 +139,7 @@ async def update_main_session_from_service(
 
         # Поиск сервисной сессии по паттерну main_session_id:*
         index = RADIUS_INDEX_NAME_SESSION
-        query = f"@Acct\\-Session\\-Id:{{{main_session_id}:\\*}}"
+        query = f"@Acct\\-Session\\-Id\\:{main_session_id}:\\*"
         logger.debug("Поиск сервисной сессии в индексе %s с запросом %s", index, query)
 
         # Получаем сервисную сессию из Redis
