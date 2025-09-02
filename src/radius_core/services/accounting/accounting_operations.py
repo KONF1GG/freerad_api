@@ -290,22 +290,14 @@ async def _handle_interim_update_packet(
     redis,
 ) -> None:
     """Обрабатывает пакет Interim-Update"""
-    if session_stored:
-        # Обновляем существующую сессию
-        logger.debug("Обработка Interim-Update для существующей сессии")
-        session_new.Acct_Update_Time = event_time
-        await save_session_to_redis(session_new, redis_key, redis)
-    else:
-        # Создаем новую сессию
+    if not session_stored:
         logger.info("Interim-Update без активной сессии, создание новой")
         session_new.Acct_Start_Time = datetime.fromtimestamp(
             event_timestamp - session_new.Acct_Session_Time, tz=timezone.utc
         )
-        session_new.Acct_Update_Time = event_time
 
-        # Сохраняем в Redis
-        # if not is_service_session:
-        await save_session_to_redis(session_new, redis_key, redis)
+    session_new.Acct_Update_Time = event_time
+    await save_session_to_redis(session_new, redis_key, redis)
 
     # Отправляем во все очереди
     asyncio.create_task(

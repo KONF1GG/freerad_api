@@ -1,12 +1,14 @@
 """Операции для работы с сервисами."""
 
+import asyncio
 import json
 import logging
 
 from radius_core.config.settings import RADIUS_INDEX_NAME_SESSION
 
-from ...models import EnrichedSessionData
+from ...models import EnrichedSessionData, SessionData
 from ...clients import execute_redis_command
+from ..storage.queue_operations import send_to_session_queue
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,9 @@ async def update_main_session_service(
         if result and result[0] > 0:
             num_results = result[0]
             logger.info(
-                "SERVICE SESSION: Найдено %s сессий по Acct-Session-Id %s", num_results, main_session_id
+                "SERVICE SESSION: Найдено %s сессий по Acct-Session-Id %s",
+                num_results,
+                main_session_id,
             )
             for i in range(num_results):
                 try:
@@ -84,6 +88,12 @@ async def update_main_session_service(
                                 session_key,
                                 service_session_value,
                             )
+
+                            # Преобразуем в SessionData
+                            session_data = SessionData(**session_dict)
+                            session_data.ERX_Service_Session = service_session_value
+
+                            # Синхронно обновляем Redis
                             await execute_redis_command(
                                 redis,
                                 "JSON.SET",
@@ -91,6 +101,9 @@ async def update_main_session_service(
                                 "$.ERX-Service-Session",
                                 json.dumps(service_session_value),
                             )
+
+                            # Асинхронно отправляем в RabbitMQ
+                            asyncio.create_task(send_to_session_queue(session_data))
                             return True
                         else:
                             logger.warning(
@@ -100,16 +113,20 @@ async def update_main_session_service(
                             return False
 
                 except Exception as e:
-                    logger.error("SERVICE SESSION: Ошибка обработки результата %s: %s", i, e)
+                    logger.error(
+                        "SERVICE SESSION: Ошибка обработки результата %s: %s", i, e
+                    )
                     continue
 
             logger.warning(
-                "SERVICE SESSION: Не удалось обновить основную сессию для %s", main_session_id
+                "SERVICE SESSION: Не удалось обновить основную сессию для %s",
+                main_session_id,
             )
             return False
         else:
             logger.warning(
-                "SERVICE SESSION: Основная сессия не найдена по Acct-Session-Id %s", main_session_id
+                "SERVICE SESSION: Основная сессия не найдена по Acct-Session-Id %s",
+                main_session_id,
             )
             return False
 
@@ -212,10 +229,13 @@ async def update_main_session_from_service(
             return False
         else:
             logger.warning(
-                "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s", main_session_id
+                "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s",
+                main_session_id,
             )
             return False
 
     except Exception as e:
-        logger.error("MIAN SESSION: Ошибка при поиске сервисной сессии: %s", e, exc_info=True)
+        logger.error(
+            "MIAN SESSION: Ошибка при поиске сервисной сессии: %s", e, exc_info=True
+        )
         return False
