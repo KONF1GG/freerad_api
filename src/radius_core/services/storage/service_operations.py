@@ -55,7 +55,7 @@ async def update_main_session_service(
         if result and result[0] > 0:
             num_results = result[0]
             logger.info(
-                "Найдено %s сессий по Acct-Session-Id %s", num_results, main_session_id
+                "SERVICE SESSION: Найдено %s сессий по Acct-Session-Id %s", num_results, main_session_id
             )
             for i in range(num_results):
                 try:
@@ -80,7 +80,7 @@ async def update_main_session_service(
                         service_session_value = service_session_req.ERX_Service_Session
                         if service_session_value:
                             logger.info(
-                                "Обновление ERX-Service-Session в основной сессии %s: %s",
+                                "SERVICE SESSION: Обновление ERX-Service-Session в основной сессии %s: %s",
                                 session_key,
                                 service_session_value,
                             )
@@ -94,27 +94,27 @@ async def update_main_session_service(
                             return True
                         else:
                             logger.warning(
-                                "ERX-Service-Session пустой в сервисной сессии %s",
+                                "SERVICE SESSION: ERX-Service-Session пустой в сервисной сессии %s",
                                 service_session_id,
                             )
                             return False
 
                 except Exception as e:
-                    logger.error("Ошибка обработки результата %s: %s", i, e)
+                    logger.error("SERVICE SESSION: Ошибка обработки результата %s: %s", i, e)
                     continue
 
             logger.warning(
-                "Не удалось обновить основную сессию для %s", main_session_id
+                "SERVICE SESSION: Не удалось обновить основную сессию для %s", main_session_id
             )
             return False
         else:
             logger.warning(
-                "Основная сессия не найдена по Acct-Session-Id %s", main_session_id
+                "SERVICE SESSION: Основная сессия не найдена по Acct-Session-Id %s", main_session_id
             )
             return False
 
     except Exception as e:
-        logger.error("Ошибка при обновлении основной сессии: %s", e)
+        logger.error("SERVICE SESSION: Ошибка при обновлении основной сессии: %s", e)
         return False
 
 
@@ -153,7 +153,7 @@ async def update_main_session_from_service(
         if result and result[0] > 0:
             num_results = result[0]
             logger.info(
-                "Найдено %s сервисных сессий для основной сессии %s",
+                "MIAN SESSION: Найдено %s сервисных сессий для основной сессии %s",
                 num_results,
                 main_session_id,
             )
@@ -182,7 +182,7 @@ async def update_main_session_from_service(
                         service_session_value = session_dict.get("ERX-Service-Session")
                         if service_session_value:
                             logger.info(
-                                "Найдено поле ERX-Service-Session в сервисной сессии %s: %s",
+                                "MIAN SESSION: Найдено поле ERX-Service-Session в сервисной сессии %s: %s",
                                 service_session_key,
                                 service_session_value,
                             )
@@ -190,13 +190,13 @@ async def update_main_session_from_service(
                             # Обновляем данные в session_req
                             main_session_req.ERX_Service_Session = service_session_value
                             logger.info(
-                                "Обновлено поле ERX-Service-Session в session_req: %s",
+                                "MIAN SESSION: Обновлено поле ERX-Service-Session в session_req: %s",
                                 service_session_value,
                             )
                             return True
                         else:
                             logger.warning(
-                                "ERX-Service-Session не найден в сервисной сессии %s",
+                                "MIAN SESSION: ERX-Service-Session не найден в сервисной сессии %s",
                                 service_session_key,
                             )
                             continue
@@ -206,16 +206,16 @@ async def update_main_session_from_service(
                     continue
 
             logger.warning(
-                "Не удалось найти сервисную сессию для основной сессии %s",
+                "MIAN SESSION: Не удалось найти сервисную сессию для основной сессии %s",
                 main_session_id,
             )
             return False
         else:
             logger.debug(
-                "Сервисная сессия не найдена для основной сессии %s", main_session_id
+                "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s", main_session_id
             )
             return False
 
     except Exception as e:
-        logger.error("Ошибка при поиске сервисной сессии: %s", e, exc_info=True)
+        logger.error("MIAN SESSION: Ошибка при поиске сервисной сессии: %s", e, exc_info=True)
         return False
