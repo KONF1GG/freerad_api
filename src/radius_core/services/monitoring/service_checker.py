@@ -113,10 +113,13 @@ async def check_and_correct_service_state(
 async def check_and_correct_services(key: str, redis, rabbitmq=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
 
-    if key.startswith("device:"):
-        await _check_device_services(key, redis, rabbitmq)
-    elif key.startswith("login:"):
+    if key.startswith("login:"):
         await _check_login_services(key, redis, rabbitmq)
+
+    elif key.startswith("device:"):
+        # Возможно будет логика для устройств
+        ...
+        # await _check_device_services(key, redis, rabbitmq)
     else:
         logger.warning("Неизвестный тип ключа для проверки сервисов: %s", key)
         raise HTTPException(
@@ -170,9 +173,9 @@ async def _check_device_services(key: str, redis, rabbitmq=None):
 
 
 async def _check_login_services(key: str, redis, rabbitmq=None):
-    """Проверяет сервисы для логина"""
+    """Проверяет по логину данные в сессиях"""
     login_name = key.split(":", 1)[1]
-    logger.debug("Проверка сервисов для логина: %s", login_name)
+    logger.debug("Проверка по логину данные в сессиях: %s", login_name)
 
     # Получаем сессии логина и данные логина
     login_key = f"{RADIUS_LOGIN_PREFIX}{login_name}"

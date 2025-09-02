@@ -178,9 +178,9 @@ async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
 
 
 @router.post("/check_and_correct_services/", response_model=Dict[str, Any])
-@track_function("radius", "coa")
+@track_function("radius", "check_services")
 @track_http_request(method="POST", endpoint="/check_and_correct_services/")
-async def do_coa(
+async def do_check_and_correct_services(
     data: CorrectRequest, redis: RedisDependency, rabbitmq: RabbitMQDependency
 ):
     """Корректирует услуги при расхождениях"""

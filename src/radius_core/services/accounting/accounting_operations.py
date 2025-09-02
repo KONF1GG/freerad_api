@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from radius_core.models.schemas import EnrichedSessionData, LoginSearchResult
 
-from ...config import RADIUS_SESSION_PREFIX
+from ...config import RADIUS_SESSION_PREFIX, RADIUS_LOGIN_PREFIX
 from ..storage.queue_operations import (
     send_to_session_queue,
     send_to_traffic_queue,
@@ -19,6 +19,7 @@ from ..storage.redis_operations import (
     save_session_to_redis,
     delete_session_from_redis,
 )
+from ...clients import execute_redis_command
 
 from ..storage.search_operations import (
     find_login_by_session,
@@ -39,6 +40,17 @@ from ..coa.coa_operations import send_coa_session_kill
 from ...core.metrics import track_function
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_login_exists_in_redis(login: str, redis) -> bool:
+    """Проверяет существование логина в Redis по ключу login:login"""
+    try:
+        login_key = f"{RADIUS_LOGIN_PREFIX}{login}"
+        result = await execute_redis_command(redis, "EXISTS", login_key)
+        return bool(result)
+    except Exception as e:
+        logger.error("Ошибка при проверке существования логина %s: %s", login, e)
+        return False
 
 
 @track_function("radius", "process_accounting")
@@ -165,9 +177,7 @@ async def _handle_session_closure_conditions(
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
     stored_login = session_stored.login
-    # stored_auth_type = getattr(session_stored, "auth_type", "UNAUTH")
     current_login = login.login if login else None
-    # current_auth_type = getattr(login, "auth_type", "UNAUTH")
 
     # 1. Существующая сессия авторизована, а текущая нет
     if stored_login and not current_login:
@@ -176,18 +186,25 @@ async def _handle_session_closure_conditions(
             session_unique_id,
             stored_login,
         )
-        # return await _merge_and_close_session(
-        #     session_stored,
-        #     session_req,
-        #     redis_key,
-        #     redis,
-        #     event_time,
-        #     session_unique_id,
-        #     rabbitmq=rabbitmq,
-        #     send_coa=True,
-        #     log_msg=f"Сессия {session_unique_id} завершена: login not found but session authorized before",
-        #     reason="login not found but session authorized before",
-        # )
+
+        # Проверяем, существует ли логин в Redis
+        login_exists = await _check_login_exists_in_redis(stored_login, redis)
+        if login_exists:
+            logger.info("Логин %s найден в Redis, завершаем сессию", stored_login)
+            return await _merge_and_close_session(
+                session_stored,
+                session_req,
+                redis_key,
+                redis,
+                event_time,
+                session_unique_id,
+                rabbitmq=rabbitmq,
+                send_coa=True,
+                log_msg=f"Сессия {session_unique_id} завершена: login not found but session authorized before",
+                reason="login not found but session authorized before",
+            )
+        else:
+            logger.info("Логин %s не найден в Redis, просто логируем", stored_login)
 
     # 2. Логин изменился
     if current_login and stored_login and stored_login != current_login:
