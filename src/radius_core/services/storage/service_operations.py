@@ -34,7 +34,7 @@ async def update_main_session_service(
             )
             return False
 
-        logger.debug(
+        logger.info(
             "Поиск основной сессии по Acct-Session-Id: %s -> %s",
             service_session_id,
             main_session_id,
@@ -132,7 +132,7 @@ async def update_main_session_from_service(
     try:
         main_session_id = main_session_req.Acct_Session_Id
 
-        logger.debug(
+        logger.info(
             "Поиск сервисной сессии для основной сессии: %s",
             main_session_id,
         )

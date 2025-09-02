@@ -78,14 +78,14 @@ async def process_accounting(
         session_id = session_req.Acct_Session_Id
 
         # Обработка сервисных сессий
-        if service:
-            logger.debug("Добавление сервиса в основную сессию %s", session_id)
+        if is_service_session:
+            logger.info("Добавление сервиса в основную сессию %s", session_id)
             # Запускаем в фоне, не ждем завершения
             asyncio.create_task(update_main_session_service(session_req, redis))
 
         # Обработка основных сессий - поиск сервисной сессии
         else:
-            logger.debug("Поиск сервисной сессии для основной сессии %s", session_id)
+            logger.info("Поиск сервисной сессии для основной сессии %s", session_id)
             await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
