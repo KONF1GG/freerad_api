@@ -80,8 +80,7 @@ async def process_accounting(
         # Обработка сервисных сессий
         if is_service_session:
             logger.info("Добавление сервиса в основную сессию %s", session_id)
-            # Запускаем в фоне, не ждем завершения
-            asyncio.create_task(update_main_session_service(session_req, redis))
+            await update_main_session_service(session_req, redis)
 
         # Обработка основных сессий - поиск сервисной сессии
         else:
