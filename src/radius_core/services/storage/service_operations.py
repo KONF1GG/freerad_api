@@ -211,7 +211,7 @@ async def update_main_session_from_service(
             )
             return False
         else:
-            logger.debug(
+            logger.warning(
                 "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s", main_session_id
             )
             return False
