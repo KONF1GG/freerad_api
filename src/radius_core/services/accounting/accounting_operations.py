@@ -86,7 +86,6 @@ async def process_accounting(
         # Обработка основных сессий - поиск сервисной сессии
         else:
             logger.debug("Поиск сервисной сессии для основной сессии %s", session_id)
-            # Обновляем данные сессии прямо здесь, синхронно
             await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
@@ -172,18 +171,18 @@ async def _handle_session_closure_conditions(
             session_unique_id,
             stored_login,
         )
-        return await _merge_and_close_session(
-            session_stored,
-            session_req,
-            redis_key,
-            redis,
-            event_time,
-            session_unique_id,
-            rabbitmq=rabbitmq,
-            send_coa=True,
-            log_msg=f"Сессия {session_unique_id} завершена: login not found but session authorized before",
-            reason="login not found but session authorized before",
-        )
+        # return await _merge_and_close_session(
+        #     session_stored,
+        #     session_req,
+        #     redis_key,
+        #     redis,
+        #     event_time,
+        #     session_unique_id,
+        #     rabbitmq=rabbitmq,
+        #     send_coa=True,
+        #     log_msg=f"Сессия {session_unique_id} завершена: login not found but session authorized before",
+        #     reason="login not found but session authorized before",
+        # )
 
     # 2. Логин изменился
     if current_login and stored_login and stored_login != current_login:
@@ -213,18 +212,18 @@ async def _handle_session_closure_conditions(
             session_unique_id,
             current_login,
         )
-        # return await _merge_and_close_session(
-        #     session_stored,
-        #     session_req,
-        #     redis_key,
-        #     redis,
-        #     event_time,
-        #     session_unique_id,
-        #     rabbitmq=rabbitmq,
-        #     send_coa=True,
-        #     log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
-        #     reason="session UNAUTH closed (now authorized)",
-        # )
+        return await _merge_and_close_session(
+            session_stored,
+            session_req,
+            redis_key,
+            redis,
+            event_time,
+            session_unique_id,
+            rabbitmq=rabbitmq,
+            send_coa=True,
+            log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
+            reason="session UNAUTH closed (now authorized)",
+        )
 
     return None
 
@@ -305,9 +304,9 @@ async def _handle_interim_update_packet(
         )
         session_new.Acct_Update_Time = event_time
 
-        # Сохраняем в Redis только обычные сессии
-        if not is_service_session:
-            await save_session_to_redis(session_new, redis_key, redis)
+        # Сохраняем в Redis
+        # if not is_service_session:
+        await save_session_to_redis(session_new, redis_key, redis)
 
     # Отправляем во все очереди
     asyncio.create_task(
