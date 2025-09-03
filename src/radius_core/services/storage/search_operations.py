@@ -220,10 +220,41 @@ async def find_login_by_session(
         return None
 
 
-async def find_sessions_by_login(login: str, redis) -> List[SessionData]:
+async def find_sessions_by_login(
+    login: str, redis, login_data: Optional[LoginSearchResult]
+) -> List[SessionData]:
     """Найти и вернуть массив всех сессий по логину."""
-    escaped_login = login.replace("-", r"\-")
-    query = f"@login:{{{escaped_login}}}"
+
+    # Строим запрос поиска
+    query_parts = []
+
+    # 1. Поиск по логину
+    query_parts.append(f"@login:{{{login}}}")
+
+    # Если переданы данные логина, добавляем дополнительные критерии поиска
+    if login_data:
+        # 2. Поиск по onu_mac
+        if hasattr(login_data, "onu_mac") and login_data.onu_mac:
+            escaped_onu_mac = login_data.onu_mac.replace(":", r"\\:")
+            query_parts.append(f"@onu_mac:{{{escaped_onu_mac}}}")
+
+        # 3. Поиск по mac+vlan
+        if (
+            hasattr(login_data, "mac")
+            and login_data.mac
+            and hasattr(login_data, "vlan")
+            and login_data.vlan
+        ):
+            # Преобразуем MAC в формат User-Name (xx:xx:xx:xx:xx:xx -> xxxx.xxxx.xxxx)
+            mac_clean = login_data.mac.replace(":", "").lower()
+            user_name_format = f"{mac_clean[0:4]}.{mac_clean[4:8]}.{mac_clean[8:12]}"
+            escaped_user_name = user_name_format.replace(".", r"\.")
+            query_parts.append(
+                f"(@User\\-Name:{{{escaped_user_name}}} @NAS\\-Port:{{{login_data.vlan}}})"
+            )
+
+    # Объединяем все части запроса через OR
+    query = " | ".join(f"({part})" for part in query_parts)
     index = "idx:radius:session"
 
     try:

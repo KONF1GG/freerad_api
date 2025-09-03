@@ -5,6 +5,7 @@ import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
+from radius_core.models.schemas import LoginSearchResult
 from radius_core.services.monitoring.service_utils import check_service_expiry
 
 from ..storage.search_operations import (
@@ -97,7 +98,7 @@ async def _handle_video_auth(
     data: AuthRequest, login: Any, auth_response: AuthResponse
 ) -> AuthResponse:
     """Обрабатывает авторизацию видеокамер"""
-    logger.debug("Авторизация видеокамеры: %s", login.login)
+    logger.info("Авторизация видеокамеры: %s", login.login)
     auth_response.reply_framed_ip_address = login.ip_addr
     auth_response.reply_erx_service_activate = "INET-VIDEO()"
     auth_response.reply_erx_virtual_router_name = "video"
@@ -109,14 +110,14 @@ async def _handle_video_auth(
 
 async def _handle_regular_auth(
     data: AuthRequest,
-    login: Any,
+    login: LoginSearchResult,
     auth_response: AuthResponse,
     nasportid: Dict[str, Any],
     session_limit: int,
     redis,
 ) -> AuthResponse:
     """Обрабатывает авторизацию обычных пользователей"""
-    sessions = await find_sessions_by_login(login.login or "", redis)
+    sessions = await find_sessions_by_login(login.login or "", redis, login)
     session_count = len(sessions)
     logger.debug("Найдено активных сессий: %s", session_count)
 
@@ -132,8 +133,16 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(data, login, "Access-Reject", f"Session limit exceeded [{data.User_Name} {login.login}]")
-        raise HTTPException(status_code=403, detail=f"Session limit exceeded [{data.User_Name} {login.login}]")
+        await _save_auth_log(
+            data,
+            login,
+            "Access-Reject",
+            f"Session limit exceeded [{data.User_Name} {login.login}]",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Session limit exceeded [{data.User_Name} {login.login}]",
+        )
 
     # Настраиваем сервисы
     auth_response = _configure_regular_services(
@@ -156,8 +165,16 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(data, login, "Access-Reject", f"Static IP limit exceeded [{login.login} {login.ip_addr}]")
-        raise HTTPException(status_code=403, detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]")
+        await _save_auth_log(
+            data,
+            login,
+            "Access-Reject",
+            f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+        )
 
     return auth_response
 

@@ -167,7 +167,8 @@ class LoginBase(BaseModel):
     auth_type: Optional[str] = Field(default="UNAUTH", description="Тип аутентификации")
     contract: Optional[str] = Field(default="", description="Контракт пользователя")
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
-    #    vlan: Optional[str] = Field(default="", description="VLAN")
+    mac: Optional[str] = Field(default="", description="MAC-адрес устройства")
+    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
         default=None,
         description="IP-адрес из данных логина или ipAddress из device",

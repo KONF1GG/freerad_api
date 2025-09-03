@@ -4,7 +4,7 @@ import logging
 import re
 import time
 import asyncio
-from typing import Optional, Any
+from typing import Optional
 from fastapi import HTTPException
 
 from radius_core.config.settings import RADIUS_LOGIN_PREFIX
@@ -13,7 +13,7 @@ from radius_core.services.storage.search_operations import (
     search_redis,
 )
 
-from ...models import SessionData, AccountingResponse
+from ...models import SessionData, AccountingResponse, LoginSearchResult
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
 from ..auth.duplicate_session_handler import (
     find_duplicate_sessions_by_username_vlan,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 async def check_and_correct_service_state(
-    session: SessionData, login_data: Any, login_name: str, rabbitmq=None
+    session: SessionData, login_data: LoginSearchResult, login_name: str, rabbitmq=None
 ) -> Optional[AccountingResponse]:
     """Проверить и скорректировать состояние сервиса"""
     if not session.ERX_Service_Session:
@@ -177,13 +177,18 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
     login_name = key.split(":", 1)[1]
     logger.debug("Проверка по логину данные в сессиях: %s", login_name)
 
-    # Получаем сессии логина и данные логина
+    # Сначала получаем данные логина
     login_key = f"{RADIUS_LOGIN_PREFIX}{login_name}"
     try:
-        sessions, login_data = await asyncio.gather(
-            find_sessions_by_login(login_name, redis),
-            search_redis(redis, query=login_key, key_type="GET", redis_key=login_key),
+        login_data: Optional[LoginSearchResult] = await search_redis(
+            redis, query=login_key, key_type="GET", redis_key=login_key
         )
+        if not login_data:
+            logger.warning("Данные логина %s не найдены в Redis", login_name)
+            return
+
+        # Теперь ищем сессии, используя данные логина
+        sessions = await find_sessions_by_login(login_name, redis, login_data)
     except Exception as e:
         logger.error("Ошибка получения данных для %s: %s", login_name, e)
         return
