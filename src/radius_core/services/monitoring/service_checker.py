@@ -102,7 +102,9 @@ async def check_and_correct_service_state(
                 )
                 coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
                 await send_coa_session_set(session, rabbitmq, coa_attributes)
-                logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
+                logger.info(
+                    "Отправка CoA на обновление скорости для логина %s", login_name
+                )
                 return AccountingResponse(
                     action="update",
                     reason="speed mismatch corrected",
@@ -115,12 +117,14 @@ async def check_and_correct_services(key: str, redis, rabbitmq=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
 
     if key.startswith("login:"):
-        await _check_login_services(key, redis, rabbitmq)
+        result = await _check_login_services(key, redis, rabbitmq)
+        return result or {"status": "checked", "message": "No corrections needed"}
 
     elif key.startswith("device:"):
         # Возможно будет логика для устройств
         ...
         # await _check_device_services(key, redis, rabbitmq)
+        return {"status": "checked", "message": "Device check not implemented"}
     else:
         logger.warning("Неизвестный тип ключа для проверки сервисов: %s", key)
         raise HTTPException(
@@ -186,29 +190,36 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
         )
         if not login_data:
             logger.warning("Данные логина %s не найдены в Redis", login_name)
-            return
+            return {
+                "status": "error",
+                "message": f"Login data not found for {login_name}",
+            }
 
         # Теперь ищем сессии, используя данные логина
         sessions = await find_sessions_by_login(login_name, redis, login_data)
         logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
     except Exception as e:
         logger.error("Ошибка получения данных для %s: %s", login_name, e)
-        return
+        return {
+            "status": "error",
+            "message": f"Error getting data for {login_name}: {str(e)}",
+        }
 
     logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
 
     if not sessions:
         logger.info("Нет сессий для проверки логина %s", login_name)
-        return
+        return {"status": "checked", "message": f"No sessions found for {login_name}"}
 
     # Проверяем каждую сессию на соответствие данным логина
     sessions_to_kill = []
     login_mismatch_found = False
+    session_mismatches = []  # Для детального описания расхождений
 
     for session in sessions:
         # Извлекаем данные из сессии
         session_onu_mac = session.onu_mac
-        session_vlan = session.NAS_Port
+        session_vlan = session.vlan
 
         # Получаем MAC из User-Name если это MAC-адрес
         session_mac = None
@@ -247,6 +258,20 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
 
         # Если есть несоответствия в критических полях - добавляем сессию на убийство
         if onu_mac_mismatch or mac_mismatch or vlan_mismatch:
+            # Собираем детальное описание расхождений для этой сессии
+            mismatches = []
+            if onu_mac_mismatch:
+                mismatches.append(f"onu_mac:{login_data.onu_mac}≠{session_onu_mac}")
+            if mac_mismatch:
+                mismatches.append(f"mac:{login_data.mac}≠{session_mac}")
+            if vlan_mismatch:
+                mismatches.append(f"vlan:{login_data.vlan}≠{session_vlan}")
+
+            session_mismatch_info = (
+                f"session:{session.Acct_Unique_Session_Id}({','.join(mismatches)})"
+            )
+            session_mismatches.append(session_mismatch_info)
+
             logger.warning(
                 "Несоответствие данных в сессии %s: onu_mac=%s/%s, mac=%s/%s, vlan=%s/%s",
                 session.Acct_Unique_Session_Id,
@@ -268,6 +293,11 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
             login_name,
         )
 
+        # Создаем детальное описание всех расхождений
+        detailed_reason = (
+            f"Data mismatch for {login_name}: {'; '.join(session_mismatches)}"
+        )
+
         # Отправляем CoA kill для всех сессий
         kill_tasks = []
         for session in sessions:
@@ -275,7 +305,7 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
                 send_coa_session_kill(
                     session,
                     rabbitmq,
-                    reason=f"Data mismatch found {login_name}",
+                    reason=detailed_reason,
                 )
             )
 
@@ -285,14 +315,20 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
         except Exception as e:
             logger.error("Ошибка при отправке CoA kill команд: %s", e, exc_info=True)
 
-        return  # Завершаем работу, так как все сессии убиты
+        return {
+            "status": "killed",
+            "message": f"Killed {len(sessions)} sessions due to data mismatch: {detailed_reason}",
+        }
 
     # Если все данные совпадают - проверяем сервисы для каждой сессии
     if login_mismatch_found:
         logger.error(
             "Обнаружены несоответствия логина, но критические поля совпадают НЕ ДОЛЖНО БЫТЬ ТАКОГО"
         )
-        return
+        return {
+            "status": "error",
+            "message": "Login mismatch found but critical fields match",
+        }
 
     logger.info("Данные сессий соответствуют логину %s, проверяем сервисы", login_name)
 
@@ -311,3 +347,9 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
                 e,
                 exc_info=True,
             )
+
+    # Если дошли до сюда, значит все сервисы корректны
+    return {
+        "status": "checked",
+        "message": f"All services checked for {login_name}, no corrections needed",
+    }

@@ -237,7 +237,7 @@ async def find_sessions_by_login(
     if login_data:
         # 2. Поиск по onu_mac
         if hasattr(login_data, "onu_mac") and login_data.onu_mac:
-            escaped_onu_mac = login_data.onu_mac.replace(":", r"\\:")
+            escaped_onu_mac = login_data.onu_mac.replace(":", r"\:")
             query_parts.append(f"@onu_mac:{{{escaped_onu_mac}}}")
 
         # 3. Поиск по mac+vlan
