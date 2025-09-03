@@ -98,7 +98,7 @@ async def _handle_video_auth(
     data: AuthRequest, login: Any, auth_response: AuthResponse
 ) -> AuthResponse:
     """Обрабатывает авторизацию видеокамер"""
-    logger.info("Авторизация видеокамеры: %s", login.login)
+    logger.info("Авторизация видеокамеры: %s", login)
     auth_response.reply_framed_ip_address = login.ip_addr
     auth_response.reply_erx_service_activate = "INET-VIDEO()"
     auth_response.reply_erx_virtual_router_name = "video"
