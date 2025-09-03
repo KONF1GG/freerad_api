@@ -257,7 +257,7 @@ def _prepare_session_data(
 ) -> SessionData:
     """Подготавливает данные сессии для обработки"""
     if session_stored:
-#        logger.debug("Обогащение существующей сессии новыми данными")
+        # logger.debug("Обогащение существующей сессии новыми данными")
         session_stored_dict = session_stored.model_dump(by_alias=True)
         session_req_dict = session_req.model_dump(by_alias=True)
 
@@ -268,18 +268,18 @@ def _prepare_session_data(
             session_req_dict.pop("ERX-Service-Session")
 
         if old_login != session_req.login:
-#            logger.debug(
-                "Логин изменился с %s на %s в STOP пакете - взяли старый логин %s",
-                old_login,
-                session_req.login,
-                session_req.Acct_Unique_Session_Id,
-            )
+            # logger.debug(
+            #     "Логин изменился с %s на %s в STOP пакете - взяли старый логин %s",
+            #     old_login,
+            #     session_req.login,
+            #     session_req.Acct_Unique_Session_Id,
+            # )
             session_req_dict.pop("login")
 
         session_stored_dict.update(session_req_dict)
         return SessionData(**session_stored_dict)
     else:
-#        logger.debug("Создание новой сессии из входящих данных")
+        # logger.debug("Создание новой сессии из входящих данных")
         session_req_dict = session_req.model_dump(by_alias=True)
         if not is_service_session and "ERX-Service-Session" in session_req_dict:
             session_req_dict.pop("ERX-Service-Session")
@@ -444,7 +444,8 @@ async def _send_to_queue_with_logging(queue_func, data, queue_name: str):
     try:
         result = await queue_func(data)
         if result:
-#            logger.debug("Сообщение успешно отправлено в %s", queue_name)
+            # logger.debug("Сообщение успешно отправлено в %s", queue_name)
+            pass
         else:
             logger.warning("Сообщение не отправлено в %s (вернулся False)", queue_name)
     except Exception as e:
