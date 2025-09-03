@@ -1,5 +1,6 @@
 """Операции авторизации RADIUS."""
 
+import asyncio
 import logging
 import time
 from typing import Any, Dict
@@ -12,7 +13,7 @@ from ..storage.search_operations import (
     find_login_by_session,
     find_sessions_by_login,
 )
-from ..storage.queue_operations import save_auth_log_to_queue
+from ..storage.queue_operations import send_auth_log_to_queue
 from ...models import AuthRequest, AuthResponse, AuthDataLog
 from ...utils import nasportid_parse
 from ...core.metrics import track_function
@@ -28,7 +29,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
 
         login = await find_login_by_session(data, redis)
-#        logger.debug("Данные логина: %s", login)
+        #        logger.debug("Данные логина: %s", login)
         session_limit = 3
 
         auth_response = AuthResponse()  # type: ignore
@@ -40,8 +41,10 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             auth_response = _build_noinet_novlan(
                 auth_response, f"User not found [{data.User_Name}]"
             )
-            await _save_auth_log(
-                data, None, "Access-Accept", f"User not found [{data.User_Name}]"
+            asyncio.create_task(
+                _save_auth_log(
+                    data, None, "Access-Accept", f"User not found [{data.User_Name}]"
+                )
             )
             return auth_response.to_radius()
 
@@ -67,8 +70,10 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             else None
         )
 
-        await _save_auth_log(
-            data, login, reply_code, reason_text or "Authorization successful"
+        asyncio.create_task(
+            _save_auth_log(
+                data, login, reply_code, reason_text or "Authorization successful"
+            )
         )
 
         logger.info(
@@ -119,7 +124,7 @@ async def _handle_regular_auth(
     """Обрабатывает авторизацию обычных пользователей"""
     sessions = await find_sessions_by_login(login.login or "", redis, login)
     session_count = len(sessions)
-#    logger.debug("Найдено активных сессий: %s", session_count)
+    #    logger.debug("Найдено активных сессий: %s", session_count)
 
     # Проверяем лимит сессий
     if session_count >= session_limit:
@@ -133,11 +138,13 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(
-            data,
-            login,
-            "Access-Reject",
-            f"Session limit exceeded [{data.User_Name} {login.login}]",
+        asyncio.create_task(
+            _save_auth_log(
+                data,
+                login,
+                "Access-Reject",
+                f"Session limit exceeded [{data.User_Name} {login.login}]",
+            )
         )
         raise HTTPException(
             status_code=403,
@@ -165,11 +172,13 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
-        await _save_auth_log(
-            data,
-            login,
-            "Access-Reject",
-            f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+        asyncio.create_task(
+            _save_auth_log(
+                data,
+                login,
+                "Access-Reject",
+                f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+            )
         )
         raise HTTPException(
             status_code=403,
@@ -286,6 +295,6 @@ async def _save_auth_log(
             agentremoteid=data.ADSL_Agent_Remote_Id,
             agentcircuitid=data.ADSL_Agent_Circuit_Id,
         )
-        await save_auth_log_to_queue(log_entry)
+        await send_auth_log_to_queue(log_entry)
     except Exception as log_err:
         logger.error("Не удалось записать лог авторизации: %s", log_err, exc_info=True)
