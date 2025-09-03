@@ -75,6 +75,23 @@ def mac_from_username(username: str) -> str:
     return mac
 
 
+def username_from_mac(mac: str) -> str:
+    """Преобразование MAC-адреса в формат User-Name (e848.b850.98fb)"""
+    if not mac:
+        return ""
+
+    # Убираем двоеточия и приводим к нижнему регистру
+    mac_clean = mac.replace(":", "").replace("-", "").lower()
+
+    # Проверяем, что MAC-адрес содержит 12 символов
+    if len(mac_clean) != 12:
+        return ""
+
+    # Преобразуем в формат xxxx.xxxx.xxxx
+    user_name_format = f"{mac_clean[0:4]}.{mac_clean[4:8]}.{mac_clean[8:12]}"
+    return user_name_format
+
+
 PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
     "0x454c5458": (10, "ELTX{}", "", False),
     "0x485754436a": (10, "70:A5:{}", ":", False),

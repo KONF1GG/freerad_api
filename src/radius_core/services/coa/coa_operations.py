@@ -54,11 +54,11 @@ async def send_coa_to_queue(
             routing_key=queue.name,
         )
 
-        logger.debug(
-            "CoA запрос %s отправлен в очередь для сессии %s",
-            request_type,
-            processed_session_data.get("Acct-Session-Id", "unknown"),
-        )
+        # logger.debug(
+        #     "CoA запрос %s отправлен в очередь для сессии %s",
+        #     request_type,
+        #     processed_session_data.get("Acct-Session-Id", "unknown"),
+        # )
         return True
 
     except Exception as e:
@@ -120,7 +120,7 @@ async def send_coa_session_kill(
     """
     try:
         session_data = session_req.model_dump(by_alias=True)
-        logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
+        # logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
         # Отправляем CoA kill запрос в очередь
         success = await send_coa_to_queue("kill", session_data, rabbitmq, reason=reason)
@@ -166,7 +166,7 @@ async def send_coa_session_set(
     """
     try:
         session_data = session_req.model_dump(by_alias=True)
-        logger.debug("Данные сессии для отправки Coa update: %s", session_data)
+        # logger.debug("Данные сессии для отправки Coa update: %s", session_data)
 
         # Отправляем CoA update запрос в очередь
         success = await send_coa_to_queue(

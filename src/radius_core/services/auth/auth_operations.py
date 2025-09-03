@@ -28,7 +28,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
 
         login = await find_login_by_session(data, redis)
-        logger.debug("Данные логина: %s", login)
+#        logger.debug("Данные логина: %s", login)
         session_limit = 3
 
         auth_response = AuthResponse()  # type: ignore
@@ -119,7 +119,7 @@ async def _handle_regular_auth(
     """Обрабатывает авторизацию обычных пользователей"""
     sessions = await find_sessions_by_login(login.login or "", redis, login)
     session_count = len(sessions)
-    logger.debug("Найдено активных сессий: %s", session_count)
+#    logger.debug("Найдено активных сессий: %s", session_count)
 
     # Проверяем лимит сессий
     if session_count >= session_limit:

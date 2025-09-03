@@ -80,7 +80,7 @@ class RedisClient:
             await redis_conn.ping()
             # Логируем информацию о пуле соединений
             if self._pool:
-                logger.debug(
+#                logger.debug(
                     "Redis pool max_connections: %s", self._pool.max_connections
                 )
             return True
@@ -138,7 +138,7 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
     command_args = args[1:] if len(args) > 1 else []
 
     try:
-        logger.debug(
+#        logger.debug(
             "Executing Redis command: %s with args: %s",
             command_name,
             command_args,
@@ -146,7 +146,7 @@ async def execute_redis_command(redis_conn, *args, timeout: float | None = None)
         result = await asyncio.wait_for(
             redis_conn.execute_command(*args), timeout=eff_timeout
         )
-        logger.debug("Redis command result: %s", result)
+#        logger.debug("Redis command result: %s", result)
         return result
     except asyncio.TimeoutError:
         logger.error(

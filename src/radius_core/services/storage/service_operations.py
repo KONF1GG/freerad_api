@@ -8,7 +8,7 @@ from radius_core.config.settings import RADIUS_INDEX_NAME_SESSION
 
 from ...models import EnrichedSessionData, SessionData
 from ...clients import execute_redis_command
-from ..storage.queue_operations import send_to_session_queue
+from .queue_operations import send_to_session_queue
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +45,8 @@ async def update_main_session_service(
         # Поиск основной сессии по полю Acct-Session-Id в индексе
         index = RADIUS_INDEX_NAME_SESSION
         query = f"@Acct\\-Session\\-Id:{{{main_session_id}}}"
-        logger.debug("Поиск основной сессии в индексе %s с запросом %s", index, query)
-
         # Получаем основную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-
-        logger.debug(
-            "FT.SEARCH result for main_session_id=%s: %s", main_session_id, result
-        )
 
         if result and result[0] > 0:
             num_results = result[0]
@@ -64,21 +58,16 @@ async def update_main_session_service(
             for i in range(num_results):
                 try:
                     fields = result[2 + i * 2]
-                    logger.debug("fields[%s]: %s", i, fields)
                     if (
                         isinstance(fields, list)
                         and len(fields) >= 2
                         and fields[0] == "$"
                     ):
                         doc_data = fields[1]
-                        logger.debug("doc_data[%s]: %s", i, doc_data)
                         if isinstance(doc_data, bytes):
                             doc_data = doc_data.decode("utf-8")
-                        logger.debug("doc_data[%s] (decoded): %s", i, doc_data)
                         session_dict = json.loads(doc_data)
-                        logger.debug("session_dict[%s]: %s", i, session_dict)
                         session_key = result[2 + i * 2 - 1]
-                        logger.debug("session_key[%s]: %s", i, session_key)
 
                         # Обновляем поле ERX-Service-Session
                         service_session_value = service_session_req.ERX_Service_Session
@@ -157,15 +146,8 @@ async def update_main_session_from_service(
         # Поиск сервисной сессии по паттерну main_session_id:*
         index = RADIUS_INDEX_NAME_SESSION
         query = f"@Acct\\-Session\\-Id:{{{main_session_id}*}}"
-        logger.debug("Поиск сервисной сессии в индексе %s с запросом %s", index, query)
         # Получаем сервисную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-
-        logger.debug(
-            "FT.SEARCH result for service session pattern %s:*: %s",
-            main_session_id,
-            result,
-        )
 
         if result and result[0] > 0:
             num_results = result[0]
@@ -177,24 +159,16 @@ async def update_main_session_from_service(
             for i in range(num_results):
                 try:
                     fields = result[2 + i * 2]
-                    logger.debug("fields[%s]: %s", i, fields)
                     if (
                         isinstance(fields, list)
                         and len(fields) >= 2
                         and fields[0] == "$"
                     ):
                         doc_data = fields[1]
-                        logger.debug("doc_data[%s]: %s", i, doc_data)
                         if isinstance(doc_data, bytes):
                             doc_data = doc_data.decode("utf-8")
-                        logger.debug("doc_data[%s] (decoded): %s", i, doc_data)
                         session_dict = json.loads(doc_data)
-                        logger.debug("session_dict[%s]: %s", i, session_dict)
                         service_session_key = result[2 + i * 2 - 1]
-                        logger.debug(
-                            "service_session_key[%s]: %s", i, service_session_key
-                        )
-
                         # Получаем поле ERX-Service-Session из сервисной сессии
                         service_session_value = session_dict.get("ERX-Service-Session")
                         if service_session_value:

@@ -61,12 +61,12 @@ async def send_to_session_queue(
                     session_data.Event_Timestamp or datetime.now(tz=_UTC_TZ)
                 )
             session_data.Acct_Stop_Time = _ensure_utc(session_data.Acct_Stop_Time)
-            logger.debug(
-                "Сессия будет остановлена: %s", session_data.Acct_Unique_Session_Id
-            )
+            # logger.debug(
+            #     "Сессия будет остановлена: %s", session_data.Acct_Unique_Session_Id
+            # )
         else:
             # Активная сессия, не заполняем Stop-Time
-            logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
+            # logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
             session_data.Acct_Stop_Time = None
 
         result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
@@ -112,9 +112,9 @@ async def send_to_traffic_queue(
 
         # Если есть старая сессия, вычисляем дельту
         if session_stored:
-            logger.debug(
-                "Вычисление дельты трафика для %s", session_new.Acct_Unique_Session_Id
-            )
+            # logger.debug(
+            #     "Вычисление дельты трафика для %s", session_new.Acct_Unique_Session_Id
+            # )
             negative_deltas = []
 
             for field, alias in TRAFFIC_FIELDS:
@@ -172,9 +172,9 @@ async def send_to_traffic_queue(
         return False
 
 
-async def save_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
+async def send_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
     """Отправка лога авторизации в RabbitMQ очередь"""
-    logger.debug("Сохранение лога авторизации: %s", auth_data.username)
+    # logger.debug("Сохранение лога авторизации: %s", auth_data.username)
     try:
         result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)
         if result:

@@ -13,7 +13,7 @@ from .search_operations import (
 from .queue_operations import (
     send_to_session_queue,
     send_to_traffic_queue,
-    save_auth_log_to_queue,
+    send_auth_log_to_queue,
 )
 from .service_operations import update_main_session_service
 
@@ -26,6 +26,6 @@ __all__ = [
     "find_sessions_by_login",
     "send_to_session_queue",
     "send_to_traffic_queue",
-    "save_auth_log_to_queue",
+    "send_auth_log_to_queue",
     "update_main_session_service",
 ]

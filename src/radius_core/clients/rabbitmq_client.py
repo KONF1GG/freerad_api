@@ -119,7 +119,7 @@ class RabbitMQClient:
                 routing_key=routing_key,
             )
 
-            logger.debug("Сообщение отправлено в %s: %s байт", routing_key, len(body))
+#            logger.debug("Сообщение отправлено в %s: %s байт", routing_key, len(body))
             return True
 
         except (AttributeError, ConnectionError, TimeoutError) as e:

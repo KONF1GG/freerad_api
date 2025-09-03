@@ -7,7 +7,13 @@ from typing import Optional, List, Any
 from ...models import SessionData, LoginSearchResult
 from ...clients import execute_redis_command
 
-from ...utils import is_mac_username, mac_from_username, mac_from_hex, nasportid_parse
+from ...utils import (
+    is_mac_username,
+    mac_from_username,
+    mac_from_hex,
+    nasportid_parse,
+    username_from_mac,
+)
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
 
@@ -37,21 +43,17 @@ async def search_redis(
         Optional[LoginSearchResult]: Результат поиска или None в случае ошибки.
     """
     try:
-        logger.debug(
-            "Search operation: key_type=%s, query=%s, index=%s, redis_key=%s",
-            key_type,
-            query,
-            index,
-            redis_key,
-        )
+        # logger.debug(
+        #     "Search operation: key_type=%s, query=%s, index=%s, redis_key=%s",
+        #     key_type,
+        #     query,
+        #     index,
+        #     redis_key,
+        # )
 
         if key_type == "FT.SEARCH":
-            logger.debug(
-                "Executing FT.SEARCH on index: %s with query: %s", index, query
-            )
             try:
                 result = await execute_redis_command(redis, "FT.SEARCH", index, query)
-                logger.debug("FT.SEARCH result: %s", result)
             except Exception as e:
                 if "WRONGTYPE" in str(e):
                     logger.error(
@@ -72,7 +74,7 @@ async def search_redis(
                     )
                     raise
             if not result or result[0] == 0:
-                logger.debug("No results for %s query: %s", key_type, query)
+                # logger.debug("No results for %s query: %s", key_type, query)
                 return None
             doc_data = result[2][1]
             if isinstance(doc_data, bytes):
@@ -82,17 +84,17 @@ async def search_redis(
             if not redis_key:
                 logger.error("redis_key is required for GET operation")
                 return None
-            logger.debug("Executing JSON.GET on key: %s", redis_key)
+            # logger.debug("Executing JSON.GET on key: %s", redis_key)
             try:
                 result = await redis.json().get(redis_key)
-                logger.debug("JSON.GET result: %s", result)
+                # logger.debug("JSON.GET result: %s", result)
             except Exception as e:
                 logger.error(
                     "Ошибка при выполнении JSON.GET для ключа %s: %s", redis_key, e
                 )
                 raise
             if not result:
-                logger.debug("No results for %s key: %s", key_type, redis_key)
+                # logger.debug("No results for %s key: %s", key_type, redis_key)
                 return None
             parsed_data = result
         else:
@@ -103,7 +105,7 @@ async def search_redis(
             parsed_data["auth_type"] = auth_type
         # Создаем модель LoginSearchResult
         login_result = LoginSearchResult(**parsed_data)
-        logger.debug("Search result: %s", login_result)
+        # logger.debug("Search result: %s", login_result)
         return login_result
 
     except json.JSONDecodeError as e:
@@ -147,60 +149,60 @@ async def find_login_by_session(
             logger.warning("Missing User-Name in session")
             return None
 
-        logger.debug("Searching login: username=%s, VLAN=%s", username, vlan)
+        # logger.debug("Searching login: username=%s, VLAN=%s", username, vlan)
 
         if is_mac_username(username):
-            logger.debug("IPoE session, MAC username: %s", username)
+            # logger.debug("IPoE session, MAC username: %s", username)
             mac = mac_from_username(username).replace(":", r"\:")
 
             # Поиск логина по МАКу
             search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
-            logger.debug("Поиск логина по MAC+VLAN: %s", search_query)
+            # logger.debug("Поиск логина по MAC+VLAN: %s", search_query)
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
-                logger.debug("Логин найден по MAC+VLAN: %s", result.login)
+                # logger.debug("Логин найден по MAC+VLAN: %s", result.login)
                 return result
 
             # Поиск камеры по МАКу
             search_query = f"@mac:{{{mac}}}"
-            logger.debug(
-                "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
-            )
+            # logger.debug(
+            #     "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
+            # )
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
             )
             if result:
-                logger.debug("Видеокамера найдена по MAC: %s", result.login)
+                # logger.debug("Видеокамера найдена по MAC: %s", result.login)
                 return result
 
             remote_id = session.ADSL_Agent_Remote_Id
             if remote_id:
                 onu_mac = mac_from_hex(remote_id).replace(":", r"\:")
                 search_query = f"@onu_mac:{{{onu_mac}}}"
-                logger.debug("Поиск логина по ONU MAC: %s", search_query)
+                # logger.debug("Поиск логина по ONU MAC: %s", search_query)
                 result = await search_redis(redis, search_query, auth_type="OPT82")
                 if result:
-                    logger.debug("Логин найден по ONU MAC: %s", result.login)
+                    # logger.debug("Логин найден по ONU MAC: %s", result.login)
                     return result
 
         else:
-            logger.debug("PPPoE/static session, username: %s", username)
+            # logger.debug("PPPoE/static session, username: %s", username)
             static_match = re.match(r"^static-(.+)", username)
             if static_match:
                 ip = static_match.groups()[0]
-                logger.debug("Static session, IP: %s", ip)
+                # logger.debug("Static session, IP: %s", ip)
                 escaped_ip = ip.replace(".", "\\.")
                 search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
-                logger.debug("Поиск статического логина по IP+VLAN: %s", search_query)
+                # logger.debug("Поиск статического логина по IP+VLAN: %s", search_query)
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
-                    logger.debug(
-                        "Статический логин найден по IP+VLAN: %s", result.login
-                    )
+                    # logger.debug(
+                    #     "Статический логин найден по IP+VLAN: %s", result.login
+                    # )
                     return result
             else:
                 login_key = f"{RADIUS_LOGIN_PREFIX}{username.strip().lower()}"
-                logger.debug("Поиск PPPoE логина по ключу: %s", login_key)
+                # logger.debug("Поиск PPPoE логина по ключу: %s", login_key)
                 result = await search_redis(
                     redis,
                     query=login_key,
@@ -209,7 +211,7 @@ async def find_login_by_session(
                     redis_key=login_key,
                 )
                 if result:
-                    logger.debug("PPPoE логин найден по ключу: %s", result.login)
+                    # logger.debug("PPPoE логин найден по ключу: %s", result.login)
                     return result
 
         logger.info("Login not found: username=%s, VLAN=%s", username, vlan)
@@ -246,12 +248,12 @@ async def find_sessions_by_login(
             and login_data.vlan
         ):
             # Преобразуем MAC в формат User-Name (xx:xx:xx:xx:xx:xx -> xxxx.xxxx.xxxx)
-            mac_clean = login_data.mac.replace(":", "").lower()
-            user_name_format = f"{mac_clean[0:4]}.{mac_clean[4:8]}.{mac_clean[8:12]}"
-            escaped_user_name = user_name_format.replace(".", r"\.")
-            query_parts.append(
-                f"(@User\\-Name:{{{escaped_user_name}}} @NAS\\-Port:{{{login_data.vlan}}})"
-            )
+            user_name_format = username_from_mac(login_data.mac)
+            if user_name_format:
+                escaped_user_name = user_name_format.replace(".", r"\\.")
+                query_parts.append(
+                    f"(@User\\-Name:{{{escaped_user_name}}} @NAS\\-Port:{{{login_data.vlan}}})"
+                )
 
     # Объединяем все части запроса через OR
     query = " | ".join(f"({part})" for part in query_parts)

@@ -171,18 +171,18 @@ async def find_device_sessions_by_device_data(
                             # Если есть несоответствие, считаем это дублирующей сессией
                             if ip_mismatch or mac_mismatch or username_mismatch:
                                 duplicates.append(found_session)
-                                logger.debug(
-                                    "Найдена конфликтующая сессия: ID=%s, "
-                                    "IP=%s(ожид.%s), MAC=%s(ожид.%s), "
-                                    "User=%s(ожид.%s)",
-                                    found_session.Acct_Unique_Session_Id,
-                                    session_ip,
-                                    device_ip,
-                                    session_mac,
-                                    device_mac,
-                                    session_username,
-                                    device_id,
-                                )
+                                # logger.debug(
+                                #     "Найдена конфликтующая сессия: ID=%s, "
+                                #     "IP=%s(ожид.%s), MAC=%s(ожид.%s), "
+                                #     "User=%s(ожид.%s)",
+                                #     found_session.Acct_Unique_Session_Id,
+                                #     session_ip,
+                                #     device_ip,
+                                #     session_mac,
+                                #     device_mac,
+                                #     session_username,
+                                #     device_id,
+                                # )
                         except Exception as e:
                             logger.warning(
                                 "Не удалось разобрать документ сессии устройства: %s",

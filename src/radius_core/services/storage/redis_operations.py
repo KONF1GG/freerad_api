@@ -18,16 +18,16 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
     Получение сессии из Redis и преобразование в модель RedisSessionData.
     """
     try:
-        logger.debug("Getting session from Redis key: %s", redis_key)
+#        logger.debug("Getting session from Redis key: %s", redis_key)
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
-        logger.debug("JSON.GET result for key %s: %s", redis_key, session_data)
+#        logger.debug("JSON.GET result for key %s: %s", redis_key, session_data)
         if not session_data:
-            logger.debug("No session data found for key: %s", redis_key)
+#            logger.debug("No session data found for key: %s", redis_key)
             return None
 
         # JSON.GET уже возвращает Python объект, не нужно парсить
         session = SessionData(**session_data)
-        logger.debug("Successfully retrieved session for key: %s", redis_key)
+#        logger.debug("Successfully retrieved session for key: %s", redis_key)
         return session
 
     except json.JSONDecodeError as e:
@@ -53,7 +53,7 @@ async def save_session_to_redis(
             ("EXPIRE", redis_key, 1800),  # TTL на 30 минут
         ]
         await execute_redis_pipeline(commands, redis_conn=redis)
-        logger.debug("Session saved to RedisJSON with TTL: %s", redis_key)
+#        logger.debug("Session saved to RedisJSON with TTL: %s", redis_key)
         return True
     except Exception as e:
         logger.error("Failed to save session to RedisJSON: %s", e)
@@ -65,7 +65,7 @@ async def delete_session_from_redis(redis_key: str, redis) -> bool:
     """Удаление сессии из Redis"""
     try:
         result = await execute_redis_command(redis, "DEL", redis_key)
-        logger.debug("Session deleted from Redis: %s, result: %s", redis_key, result)
+#        logger.debug("Session deleted from Redis: %s, result: %s", redis_key, result)
         return result > 0
     except Exception as e:
         logger.error("Failed to delete session from Redis: %s", e)
