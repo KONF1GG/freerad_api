@@ -168,6 +168,7 @@ class LoginBase(BaseModel):
     contract: Optional[str] = Field(default="", description="Контракт пользователя")
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
     mac: Optional[str] = Field(default="", description="MAC-адрес устройства")
+    speed: Optional[str] = Field(default="", description="Скорость услуги")
     vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
         default=None,

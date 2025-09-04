@@ -32,17 +32,21 @@ async def check_and_correct_service_state(
     if not session.ERX_Service_Session:
         return None
 
+
     # Получаем параметры услуги
     timeto = getattr(
         getattr(getattr(login_data, "servicecats", None), "internet", None),
         "timeto",
         None,
     )
-    speed = getattr(
-        getattr(getattr(login_data, "servicecats", None), "internet", None),
-        "speed",
-        None,
-    )
+    if login_data.speed:
+        speed = login_data.speed
+    else:
+        speed = getattr(
+            getattr(getattr(login_data, "servicecats", None), "internet", None),
+            "speed",
+            None,
+        )
 
     # Проверяем срок действия услуги
     now_timestamp = time.time()
