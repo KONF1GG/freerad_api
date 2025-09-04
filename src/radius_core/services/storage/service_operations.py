@@ -44,7 +44,9 @@ async def update_main_session_service(
 
         # Поиск основной сессии по полю Acct-Session-Id в индексе
         index = RADIUS_INDEX_NAME_SESSION
-        query = f"@Acct\\-Session\\-Id:{{{main_session_id}}}"
+        # Экранируем специальные символы в main_session_id
+        escaped_session_id = main_session_id.replace("-", "\\-").replace(":", "\\:")
+        query = f"@Acct\\-Session\\-Id:{{{escaped_session_id}}}"
         # Получаем основную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 
@@ -145,7 +147,9 @@ async def update_main_session_from_service(
 
         # Поиск сервисной сессии по паттерну main_session_id:*
         index = RADIUS_INDEX_NAME_SESSION
-        query = f"@Acct\\-Session\\-Id:{{{main_session_id}*}}"
+        # Экранируем специальные символы в main_session_id
+        escaped_session_id = main_session_id.replace("-", "\\-").replace(":", "\\:")
+        query = f"@Acct\\-Session\\-Id:{{{escaped_session_id}*}}"
         # Получаем сервисную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 

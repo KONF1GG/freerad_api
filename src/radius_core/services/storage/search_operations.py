@@ -181,7 +181,9 @@ async def find_login_by_session(
             mac = mac_from_username(username).replace(":", r"\:")
 
             # Поиск логина по МАКу
-            search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
+            # Экранируем специальные символы в vlan
+            escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
+            search_query = f"@mac:{{{mac}}}@vlan:{{{escaped_vlan}}}"
             # logger.debug("Поиск логина по MAC+VLAN: %s", search_query)
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
@@ -217,7 +219,9 @@ async def find_login_by_session(
                 ip = static_match.groups()[0]
                 # logger.debug("Static session, IP: %s", ip)
                 escaped_ip = ip.replace(".", "\\.")
-                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
+                # Экранируем специальные символы в vlan
+                escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
+                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{escaped_vlan}}}"
                 # logger.debug("Поиск статического логина по IP+VLAN: %s", search_query)
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
@@ -256,7 +260,9 @@ async def find_sessions_by_login(
     query_parts = []
 
     # 1. Поиск по логину
-    query_parts.append(f"@login:{{{login}}}")
+    # Экранируем специальные символы в login
+    escaped_login = login.replace("-", "\\-").replace(":", "\\:").replace(".", "\\.")
+    query_parts.append(f"@login:{{{escaped_login}}}")
 
     # Если переданы данные логина, добавляем дополнительные критерии поиска
     if login_data:
