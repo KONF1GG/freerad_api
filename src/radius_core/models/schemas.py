@@ -199,10 +199,6 @@ class LoginSearchResult(LoginBase):
     """Модель для результата поиска логина."""
 
 
-class VideoLoginSearchResult(LoginBase):
-    """Модель для результата поиска видеокамеры."""
-
-
 class VideoDeviceInfo(BaseModel):
     """Модель для информации о видеокамере."""
 
@@ -219,6 +215,13 @@ class VideoDeviceInfo(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     parentId: Optional[str] = None
+
+
+class VideoLoginSearchResult(VideoDeviceInfo):
+    """Модель для результата поиска видеокамеры с ключом Redis."""
+
+    key: Optional[str] = Field(None, description="Ключ Redis для видеокамеры")
+    auth_type: Optional[str] = Field(default="VIDEO", description="Тип аутентификации")
 
 
 class EnrichedSessionData(AccountingData, LoginBase):

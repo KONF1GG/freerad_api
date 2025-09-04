@@ -3,8 +3,9 @@
 import json
 import logging
 import re
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Union
 from ...models import SessionData, LoginSearchResult
+from ...models.schemas import VideoLoginSearchResult
 from ...clients import execute_redis_command
 
 from ...utils import (
@@ -27,7 +28,7 @@ async def search_redis(
     key_type: str = "FT.SEARCH",
     index: str = "idx:radius:login",
     redis_key: Optional[str] = None,
-) -> Optional[LoginSearchResult]:
+) -> Optional[Union[LoginSearchResult, VideoLoginSearchResult]]:
     """
     Универсальный поиск в Redis по заданному запросу или ключу.
 
@@ -54,6 +55,12 @@ async def search_redis(
         if key_type == "FT.SEARCH":
             try:
                 result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+                # Логируем ключ для FT.SEARCH результатов
+                if result and result[0] > 0 and len(result) > 1:
+                    doc_key = result[1] if len(result) > 1 else "unknown"
+                    logger.debug("FT.SEARCH found key: %s", doc_key)
+                    # Сохраняем ключ для использования в модели
+                    redis_key = doc_key
             except Exception as e:
                 if "WRONGTYPE" in str(e):
                     logger.error(
@@ -103,12 +110,19 @@ async def search_redis(
 
         if auth_type:
             parsed_data["auth_type"] = auth_type
-        # Создаем модель LoginSearchResult
-        if auth_type and auth_type != "VIDEO":
-            login_result = LoginSearchResult(**parsed_data)
-        elif auth_type and auth_type == "VIDEO":
-            logger.warning("VIDEO result redis: %s", parsed_data)
-            login_result = LoginSearchResult(**parsed_data)
+
+        # Добавляем ключ Redis для видеокамер
+        if auth_type == "VIDEO" and redis_key:
+            parsed_data["key"] = redis_key
+
+        # Создаем модель в зависимости от типа
+        if auth_type == "VIDEO":
+            logger.warning(
+                "VIDEO result redis key: %s, data: %s",
+                redis_key or "unknown",
+                parsed_data,
+            )
+            login_result = VideoLoginSearchResult(**parsed_data)
         else:
             login_result = LoginSearchResult(**parsed_data)
 
@@ -127,7 +141,7 @@ async def search_redis(
 async def find_login_by_session(
     session: Any,
     redis,
-) -> Optional[LoginSearchResult]:
+) -> Optional[Union[LoginSearchResult, VideoLoginSearchResult]]:
     """
     Асинхронный поиск логина по данным сессии.
 
@@ -172,9 +186,9 @@ async def find_login_by_session(
 
             # Поиск камеры по МАКу
             search_query = f"@mac:{{{mac}}}"
-            # logger.debug(
-            #     "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
-            # )
+            logger.debug(
+                "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
+            )
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
             )

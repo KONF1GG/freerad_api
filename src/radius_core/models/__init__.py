@@ -10,6 +10,7 @@ from .schemas import (
     TrafficData,
     EnrichedSessionData,
     LoginSearchResult,
+    VideoLoginSearchResult,
     RABBIT_MODELS,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "TrafficData",
     "EnrichedSessionData",
     "LoginSearchResult",
+    "VideoLoginSearchResult",
     "RABBIT_MODELS",
 ]
