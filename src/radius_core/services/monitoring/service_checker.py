@@ -65,8 +65,9 @@ async def check_and_correct_service_state(
         if speed:
             expected_speed_mb = float(speed) * 1.1
             coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
+            reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
-            await send_coa_session_set(session, rabbitmq, coa_attributes)
+            await send_coa_session_set(session, rabbitmq, coa_attributes, reason=reason)
             return AccountingResponse(
                 action="update",
                 reason="router incorrectly blocked service, unblocked",
@@ -79,7 +80,8 @@ async def check_and_correct_service_state(
             "Услуга для логина %s должна быть заблокирована, но роутер этого не сделал",
             login_name,
         )
-        await send_coa_session_kill(session, rabbitmq)
+        reason = f"Service expired for {login_name}, blocking access"
+        await send_coa_session_kill(session, rabbitmq, reason=reason)
         logger.info("Отправка CoA на убийство сессии для логина %s", login_name)
         return AccountingResponse(
             action="kill",
@@ -88,7 +90,7 @@ async def check_and_correct_service_state(
         )
     else:
         # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
-        match = re.search(r"\(([\d.]+[km])\)", session.ERX_Service_Session)
+        match = re.search(r"\(([\d.]+[km]?)\)", session.ERX_Service_Session)
         if match and speed:
             speed_str = match.group(1)
             if speed_str.endswith("k"):
@@ -96,7 +98,8 @@ async def check_and_correct_service_state(
             elif speed_str.endswith("m"):
                 service_speed_mb = float(speed_str[:-1])  # m -> Mb (оставляем как есть)
             else:
-                service_speed_mb = float(speed_str)  # fallback, если нет суффикса
+                # Нет суффикса - это биты в секунду, преобразуем в Mb
+                service_speed_mb = float(speed_str) / 1000000  # биты -> Mb
 
             expected_speed_mb = float(speed) * 1.1
 
@@ -108,7 +111,10 @@ async def check_and_correct_service_state(
                     service_speed_mb,
                 )
                 coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
-                await send_coa_session_set(session, rabbitmq, coa_attributes)
+                reason = f"Speed mismatch for {login_name}: expected {expected_speed_mb}Mb, got {service_speed_mb}Mb"
+                await send_coa_session_set(
+                    session, rabbitmq, coa_attributes, reason=reason
+                )
                 logger.info(
                     "Отправка CoA на обновление скорости для логина %s", login_name
                 )

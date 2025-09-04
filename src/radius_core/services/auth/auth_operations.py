@@ -6,7 +6,7 @@ import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
-from radius_core.models.schemas import LoginSearchResult
+from radius_core.models.schemas import LoginSearchResult, VideoLoginSearchResult
 from radius_core.services.monitoring.service_utils import check_service_expiry
 
 from ..storage.search_operations import (
@@ -30,8 +30,6 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         login = await find_login_by_session(data, redis)
         logger.debug("Данные логина: %s", login)
-        if login.auth_type == "VIDEO":
-            logger.warning("Авторизация видеокамеры: %s", login)
         session_limit = 3
 
         auth_response = AuthResponse()  # type: ignore
@@ -102,10 +100,14 @@ def _build_noinet_novlan(auth_response: AuthResponse, reason: str) -> AuthRespon
 
 
 async def _handle_video_auth(
-    data: AuthRequest, login: Any, auth_response: AuthResponse
+    data: AuthRequest, login: VideoLoginSearchResult, auth_response: AuthResponse
 ) -> AuthResponse:
     """Обрабатывает авторизацию видеокамер"""
-    logger.info("Авторизация видеокамеры: %s", login)
+    # TODO
+    # При авторизации VIDEO - заглянуть в Redis в ключ camera:%id%,
+    #  где id это номер камеры (1529) из ключа device:cam0001529,
+    # и оттуда взять login из logins[0]. Сохранить его в сессию в login
+    logger.info("Авторизация видеокамеры: %s", login.key)
     auth_response.reply_framed_ip_address = login.ip_addr
     auth_response.reply_erx_service_activate = "INET-VIDEO()"
     auth_response.reply_erx_virtual_router_name = "video"
