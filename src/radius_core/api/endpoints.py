@@ -165,8 +165,8 @@ async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
             "Запрос авторизации успешно обработан для пользователя: %s", data.User_Name
         )
         return result
-    except HTTPException:
-        logger.error("Ошибка при обработке авторизации: %s", exc_info=True)
+    except HTTPException as e:
+        logger.error("Ошибка при обработке авторизации: %s", str(e), exc_info=True)
         raise
     except Exception as e:
         logger.error(
