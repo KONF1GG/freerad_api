@@ -1,6 +1,7 @@
 """Операции аккаунтинга RADIUS."""
 
 import asyncio
+import time
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -92,7 +93,8 @@ async def process_accounting(
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
             if packet_type == "Start":
-                await asyncio.sleep(0.2)
+                time.sleep(0.2)
+                # await asyncio.sleep(0.2)
             logger.info(
                 "Добавление сервиса в основную сессию (%s) %s", packet_type, session_id
             )
