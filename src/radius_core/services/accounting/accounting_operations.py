@@ -110,7 +110,7 @@ async def process_accounting(
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored and packet_type != "Stop":
-            if login.auth_type != "VIDEO":
+            if login and login.auth_type != "VIDEO":
                 session_closure_result = await _handle_session_closure_conditions(
                     redis,
                     rabbitmq,
