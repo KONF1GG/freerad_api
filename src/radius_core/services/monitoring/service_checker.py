@@ -64,7 +64,7 @@ async def check_and_correct_service_state(
         )
         if speed:
             expected_speed_mb = float(speed) * 1.1
-            coa_attributes = {"ERX-Cos-Shaping-Rate": int(expected_speed_mb * 1000)}
+            coa_attributes = {"ERX-Service-Deactivate": int(expected_speed_mb * 1000)}
             reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
             await send_coa_session_set(session, rabbitmq, coa_attributes, reason=reason)

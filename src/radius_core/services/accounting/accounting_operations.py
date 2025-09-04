@@ -91,6 +91,7 @@ async def process_accounting(
 
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
+            await asyncio.sleep(0.1)
             logger.info(
                 "Добавление сервиса в основную сессию (%s) %s", packet_type, session_id
             )
