@@ -119,6 +119,7 @@ async def send_coa_session_kill(
     """
     try:
         data_for_coa = {
+            "login": session_req.login,
             "Acct-Session-Id": session_req.Acct_Session_Id,
             "NAS-IP-Address": session_req.NAS_IP_Address,
         }
@@ -168,6 +169,7 @@ async def send_coa_session_set(
     """
     try:
         data_for_coa = {
+            "login": session_req.login,
             "Acct-Session-Id": session_req.Acct_Session_Id,
             "NAS-IP-Address": session_req.NAS_IP_Address,
         }
