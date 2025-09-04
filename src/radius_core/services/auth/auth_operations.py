@@ -103,15 +103,11 @@ async def _handle_video_auth(
     data: AuthRequest, login: VideoLoginSearchResult, auth_response: AuthResponse
 ) -> AuthResponse:
     """Обрабатывает авторизацию видеокамер"""
-    # TODO
-    # При авторизации VIDEO - заглянуть в Redis в ключ camera:%id%,
-    #  где id это номер камеры (1529) из ключа device:cam0001529,
-    # и оттуда взять login из logins[0]. Сохранить его в сессию в login
     logger.info("Авторизация видеокамеры: %s", login.key)
     auth_response.reply_framed_ip_address = login.ip_addr
     auth_response.reply_erx_service_activate = "INET-VIDEO()"
     auth_response.reply_erx_virtual_router_name = "video"
-    auth_response.reply_nas_port_id = f"{data.User_Name or ''} | {login.login or ''} | {data.ADSL_Agent_Remote_Id or ''}"
+    auth_response.reply_nas_port_id = f"{data.User_Name or ''} | {login.host or ''} | {data.ADSL_Agent_Remote_Id or ''}"
     auth_response.reply_message = {"value": f"Session type: {login.auth_type or ''}"}
     auth_response.control_auth_type = {"value": "Accept"}
     return auth_response
