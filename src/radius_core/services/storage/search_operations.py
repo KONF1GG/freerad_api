@@ -106,8 +106,10 @@ async def search_redis(
         # Создаем модель LoginSearchResult
         if auth_type and auth_type != "VIDEO":
             login_result = LoginSearchResult(**parsed_data)
+        elif auth_type and auth_type == "VIDEO":
+            logger.warning("VIDEO result redis: %s", parsed_data)
+            login_result = LoginSearchResult(**parsed_data)
         else:
-            logger.info("VIDEO result redis: %s", parsed_data)
             login_result = LoginSearchResult(**parsed_data)
 
         # logger.debug("Search result: %s", login_result)
