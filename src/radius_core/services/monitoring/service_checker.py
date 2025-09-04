@@ -65,8 +65,10 @@ async def check_and_correct_service_state(
         if speed:
             expected_speed_mb = float(speed) * 1.1
             coa_attributes = {
-                "ERX-Service-Activate:1": int(expected_speed_mb * 1000),
-                "ERX-Service-Deactivate": session.ERX_Service_Session,
+                "ERX-Service-Activate:1": "INET-FREEDOM("
+                + str(int(expected_speed_mb))
+                + "m)",
+                "ERX-Service-Deactivate": "INET-FREEDOM",
             }
             reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
@@ -114,8 +116,10 @@ async def check_and_correct_service_state(
                     service_speed_mb,
                 )
                 coa_attributes = {
-                    "ERX-Service-Activate:1": int(expected_speed_mb * 1000),
-                    "ERX-Service-Deactivate": session.ERX_Service_Session,
+                    "ERX-Service-Activate:1": "INET-FREEDOM("
+                    + str(int(expected_speed_mb))
+                    + "m)",
+                    "ERX-Service-Deactivate": "INET-FREEDOM",
                 }
                 reason = f"Speed mismatch for {login_name}: expected {expected_speed_mb}Mb, got {service_speed_mb}Mb"
                 await send_coa_session_set(
