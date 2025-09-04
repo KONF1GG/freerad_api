@@ -88,9 +88,16 @@ async def check_and_correct_service_state(
         )
     else:
         # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
-        match = re.search(r"\(([\d.]+k)\)", session.ERX_Service_Session)
+        match = re.search(r"\(([\d.]+[km])\)", session.ERX_Service_Session)
         if match and speed:
-            service_speed_mb = float(match.group(1).replace("k", "")) / 1000  # k -> Mb
+            speed_str = match.group(1)
+            if speed_str.endswith("k"):
+                service_speed_mb = float(speed_str[:-1]) / 1000  # k -> Mb
+            elif speed_str.endswith("m"):
+                service_speed_mb = float(speed_str[:-1])  # m -> Mb (оставляем как есть)
+            else:
+                service_speed_mb = float(speed_str)  # fallback, если нет суффикса
+
             expected_speed_mb = float(speed) * 1.1
 
             if abs(service_speed_mb - expected_speed_mb) >= 0.01:

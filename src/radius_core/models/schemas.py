@@ -199,6 +199,28 @@ class LoginSearchResult(LoginBase):
     """Модель для результата поиска логина."""
 
 
+class VideoLoginSearchResult(LoginBase):
+    """Модель для результата поиска видеокамеры."""
+
+
+class VideoDeviceInfo(BaseModel):
+    """Модель для информации о видеокамере."""
+
+    host: Optional[str] = None
+    hostId: Optional[int] = None
+    ipAddress: Optional[str] = None
+    ip_addr: Optional[str] = None
+    type: Optional[str] = None
+    node: Optional[str] = None
+    nodeId: Optional[int] = None
+    group: Optional[str] = None
+    mac: Optional[str] = None
+    vlan: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    parentId: Optional[str] = None
+
+
 class EnrichedSessionData(AccountingData, LoginBase):
     """Модель для сессии с данными логина."""
 

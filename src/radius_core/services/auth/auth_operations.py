@@ -30,8 +30,6 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         login = await find_login_by_session(data, redis)
         logger.debug("Данные логина: %s", login)
-        if login.auth_type == "VIDEO":
-            logger.info("Авторизация видеокамеры: %s", login)
         session_limit = 3
 
         auth_response = AuthResponse()  # type: ignore
