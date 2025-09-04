@@ -91,7 +91,8 @@ async def process_accounting(
 
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
-            await asyncio.sleep(0.1)
+            if packet_type == "Start":
+                await asyncio.sleep(0.2)
             logger.info(
                 "Добавление сервиса в основную сессию (%s) %s", packet_type, session_id
             )
@@ -108,18 +109,19 @@ async def process_accounting(
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if session_stored and packet_type != "Stop":
-            session_closure_result = await _handle_session_closure_conditions(
-                redis,
-                rabbitmq,
-                redis_key,
-                session_stored,
-                session_req,
-                event_time,
-                session_unique_id,
-                login,
-            )
-            if session_closure_result:
-                return session_closure_result
+            if login.auth_type != "VIDEO":
+                session_closure_result = await _handle_session_closure_conditions(
+                    redis,
+                    rabbitmq,
+                    redis_key,
+                    session_stored,
+                    session_req,
+                    event_time,
+                    session_unique_id,
+                    login,
+                )
+                if session_closure_result:
+                    return session_closure_result
 
         # Создаем или обновляем сессию
         session_new = _prepare_session_data(
