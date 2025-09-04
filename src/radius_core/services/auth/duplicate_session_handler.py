@@ -195,7 +195,7 @@ async def find_device_sessions_by_device_data(
 
 
 async def kill_duplicate_sessions(
-    sessions: List[SessionData], reason: str, rabbitmq=None
+    sessions: List[SessionData], reason: str, channel=None
 ) -> None:
     """Завершить список дублирующих сессий"""
 
@@ -204,7 +204,7 @@ async def kill_duplicate_sessions(
         session_id = getattr(session, "Acct_Unique_Session_Id", None)
         if session_id:
             logger.info("Завершаем дублирующую сессию: %s (%s)", session_id, reason)
-            tasks.append(send_coa_session_kill(session, rabbitmq))
+            tasks.append(send_coa_session_kill(session, channel))
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)

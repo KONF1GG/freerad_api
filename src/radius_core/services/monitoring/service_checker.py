@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 async def check_and_correct_service_state(
-    session: SessionData, login_data: LoginSearchResult, login_name: str, rabbitmq=None
+    session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[AccountingResponse]:
     """Проверить и скорректировать состояние сервиса"""
     if not session.ERX_Service_Session:
@@ -70,7 +70,7 @@ async def check_and_correct_service_state(
             }
             reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
-            await send_coa_session_set(session, rabbitmq, coa_attributes, reason=reason)
+            await send_coa_session_set(session, channel, coa_attributes, reason=reason)
             return AccountingResponse(
                 action="update",
                 reason="router incorrectly blocked service, unblocked",
@@ -84,7 +84,7 @@ async def check_and_correct_service_state(
             login_name,
         )
         reason = f"Service expired for {login_name}, blocking access"
-        await send_coa_session_kill(session, rabbitmq, reason=reason)
+        await send_coa_session_kill(session, channel, reason=reason)
         logger.info("Отправка CoA на убийство сессии для логина %s", login_name)
         return AccountingResponse(
             action="kill",
@@ -119,7 +119,7 @@ async def check_and_correct_service_state(
                 }
                 reason = f"Speed mismatch for {login_name}: expected {expected_speed_mb}Mb, got {service_speed_mb}Mb"
                 await send_coa_session_set(
-                    session, rabbitmq, coa_attributes, reason=reason
+                    session, channel, coa_attributes, reason=reason
                 )
                 logger.info(
                     "Отправка CoA на обновление скорости для логина %s", login_name
@@ -132,11 +132,11 @@ async def check_and_correct_service_state(
     return None
 
 
-async def check_and_correct_services(key: str, redis, rabbitmq=None):
+async def check_and_correct_services(key: str, redis, channel=None):
     """Проверяет и корректирует сервисы для логина или устройства"""
 
     if key.startswith("login:"):
-        result = await _check_login_services(key, redis, rabbitmq)
+        result = await _check_login_services(key, redis, channel)
         return result or {"status": "checked", "message": "No corrections needed"}
 
     elif key.startswith("device:"):
@@ -151,7 +151,7 @@ async def check_and_correct_services(key: str, redis, rabbitmq=None):
         )
 
 
-async def _check_device_services(key: str, redis, rabbitmq=None):
+async def _check_device_services(key: str, redis, channel=None):
     """Проверяет сервисы для устройства"""
     device_id = key.split(":", 1)[1]
     # logger.debug("Проверка устройства: %s", device_id)
@@ -182,7 +182,7 @@ async def _check_device_services(key: str, redis, rabbitmq=None):
 
         if duplicate_sessions:
             await kill_duplicate_sessions(
-                duplicate_sessions, f"device {device_id} IP/MAC mismatch", rabbitmq
+                duplicate_sessions, f"device {device_id} IP/MAC mismatch", channel
             )
             logger.info(
                 "Завершено %s конфликтующих сессий для устройства %s",
@@ -196,7 +196,7 @@ async def _check_device_services(key: str, redis, rabbitmq=None):
         )
 
 
-async def _check_login_services(key: str, redis, rabbitmq=None):
+async def _check_login_services(key: str, redis, channel=None):
     """Проверяет по логину данные в сессиях"""
     login_name = key.split(":", 1)[1]
     logger.info("Проверка по логину данные в сессиях: %s", login_name)
@@ -323,7 +323,7 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
             kill_tasks.append(
                 send_coa_session_kill(
                     session,
-                    rabbitmq,
+                    channel,
                     reason=detailed_reason,
                 )
             )
@@ -355,7 +355,7 @@ async def _check_login_services(key: str, redis, rabbitmq=None):
     for session in sessions:
         try:
             correction_result = await check_and_correct_service_state(
-                session, login_data, login_name, rabbitmq
+                session, login_data, login_name, channel
             )
             if correction_result:
                 return correction_result

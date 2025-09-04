@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 async def send_coa_to_queue(
     request_type: str,
     session_data: Dict[str, Any],
-    rabbitmq,
+    channel,
     attributes: Optional[Dict[str, Any]] = None,
     reason: Optional[str] = None,
 ) -> bool:
@@ -33,9 +33,6 @@ async def send_coa_to_queue(
         bool: True если запрос успешно отправлен, False в противном случае
     """
     try:
-        # Получаем канал
-        channel = await rabbitmq.get_channel()
-
         coa_exchange = await channel.declare_exchange(
             AMQP_COA_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
         )
@@ -95,7 +92,7 @@ async def send_coa_to_queue(
         return False
 
 
-async def check_coa_queue_status(rabbitmq) -> Dict[str, Any]:
+async def check_coa_queue_status(channel) -> Dict[str, Any]:
     """
     Проверка состояния очереди CoA запросов
 
@@ -103,9 +100,6 @@ async def check_coa_queue_status(rabbitmq) -> Dict[str, Any]:
         Dict с информацией о состоянии очереди
     """
     try:
-        # Получаем канал
-        channel = await rabbitmq.get_channel()
-
         # Объявляем exchange и очередь (пассивно, чтобы не изменять существующие параметры)
         coa_exchange = await channel.declare_exchange(
             AMQP_COA_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True, passive=True
@@ -160,7 +154,7 @@ def _build_coa_message(
 
 
 async def send_coa_session_kill(
-    session_req: SessionData, rabbitmq, reason: Optional[str] = None
+    session_req: SessionData, channel, reason: Optional[str] = None
 ) -> bool:
     """
     Отправка команды на завершение сессии через CoA (в очередь)
@@ -181,7 +175,7 @@ async def send_coa_session_kill(
         # logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
         # Отправляем CoA kill запрос в очередь
-        success = await send_coa_to_queue("kill", data_for_coa, rabbitmq, reason=reason)
+        success = await send_coa_to_queue("kill", data_for_coa, channel, reason=reason)
 
         if success:
             logger.info(
@@ -207,7 +201,7 @@ async def send_coa_session_kill(
 
 async def send_coa_session_set(
     session_req: SessionData,
-    rabbitmq,
+    channel,
     attributes: Dict[str, Any],
     reason: Optional[str] = None,
 ) -> bool:
@@ -234,7 +228,7 @@ async def send_coa_session_set(
         success = await send_coa_to_queue(
             "update",
             data_for_coa,
-            rabbitmq,
+            channel,
             attributes,
             reason=reason,
         )
