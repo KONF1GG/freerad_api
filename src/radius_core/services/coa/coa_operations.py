@@ -121,7 +121,6 @@ async def send_coa_session_kill(
         data_for_coa = {
             "Acct-Session-Id": session_req.Acct_Session_Id,
             "NAS-IP-Address": session_req.NAS_IP_Address,
-            "NAS-Port-Id": session_req.NAS_Port_Id,
         }
         # logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
@@ -171,7 +170,6 @@ async def send_coa_session_set(
         data_for_coa = {
             "Acct-Session-Id": session_req.Acct_Session_Id,
             "NAS-IP-Address": session_req.NAS_IP_Address,
-            "NAS-Port-Id": session_req.NAS_Port_Id,
         }
         # logger.debug("Данные сессии для отправки Coa update: %s", session_data)
 
