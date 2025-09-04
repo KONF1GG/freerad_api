@@ -33,42 +33,60 @@ async def send_coa_to_queue(
         bool: True если запрос успешно отправлен, False в противном случае
     """
     try:
-        # Создаем COA exchange (TOPIC для гибкой маршрутизации)
-        coa_exchange = await rabbitmq.declare_exchange(
+        # Получаем канал
+        channel = await rabbitmq.get_channel()
+
+        coa_exchange = await channel.declare_exchange(
             AMQP_COA_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
         )
 
-        # Объявляем очередь для CoA запросов
-        queue = await rabbitmq.declare_queue(AMQP_COA_QUEUE, durable=True)
+        # Объявляем очередь для CoA запросов (пассивно, чтобы не изменять существующие параметры)
+        queue = await channel.declare_queue(AMQP_COA_QUEUE, durable=True, passive=True)
 
         # Привязываем очередь к exchange с правильным routing key
         await queue.bind(coa_exchange, routing_key="coa.request.*")
 
-        # Создаем копию session_data с преобразованными datetime объектами
-        processed_session_data = _process_session_data_for_coa(session_data)
+        logger.debug(
+            "Очередь %s привязана к exchange %s с routing key coa.request.*",
+            AMQP_COA_QUEUE,
+            AMQP_COA_EXCHANGE,
+        )
 
         # Формируем сообщение
         message_data = _build_coa_message(
-            request_type, processed_session_data, attributes, reason
+            request_type, session_data, attributes, reason
         )
 
         # Определяем routing key в зависимости от типа запроса
         routing_key = f"coa.request.{request_type}"
 
         # Отправляем сообщение через COA exchange
-        await coa_exchange.publish(
-            aio_pika.Message(
-                body=json.dumps(message_data, ensure_ascii=False).encode(),
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=routing_key,
+        message_body = json.dumps(message_data, ensure_ascii=False).encode()
+        message = aio_pika.Message(
+            body=message_body,
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
         )
 
-        logger.debug(
-            "CoA запрос %s отправлен в очередь через exchange %s с routing key %s",
+        # Отправляем сообщение с подтверждением
+        result = await coa_exchange.publish(message, routing_key=routing_key)
+
+        # Проверяем, было ли сообщение доставлено
+        if not result:
+            logger.error(
+                "Сообщение не было доставлено в exchange %s с routing key %s",
+                AMQP_COA_EXCHANGE,
+                routing_key,
+            )
+            return False
+
+        logger.info(
+            "CoA запрос %s отправлен в очередь через exchange %s с routing key %s, "
+            "размер сообщения: %d байт, данные: %s",
             request_type,
             AMQP_COA_EXCHANGE,
             routing_key,
+            len(message_body),
+            message_data,
         )
         return True
 
@@ -77,21 +95,47 @@ async def send_coa_to_queue(
         return False
 
 
-def _process_session_data_for_coa(session_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Преобразует datetime объекты в строки"""
-    if not isinstance(session_data, dict):
-        logger.error(
-            "session_data должен быть словарем, получен: %s", type(session_data)
-        )
-        return {}
+async def check_coa_queue_status(rabbitmq) -> Dict[str, Any]:
+    """
+    Проверка состояния очереди CoA запросов
 
-    processed_session_data = {}
-    for key, value in session_data.items():
-        if isinstance(value, datetime):
-            processed_session_data[key] = value.isoformat()
-        else:
-            processed_session_data[key] = value
-    return processed_session_data
+    Returns:
+        Dict с информацией о состоянии очереди
+    """
+    try:
+        # Получаем канал
+        channel = await rabbitmq.get_channel()
+
+        # Объявляем exchange и очередь (пассивно, чтобы не изменять существующие параметры)
+        coa_exchange = await channel.declare_exchange(
+            AMQP_COA_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True, passive=True
+        )
+        queue = await channel.declare_queue(AMQP_COA_QUEUE, durable=True, passive=True)
+
+        # Получаем информацию о очереди
+        queue_info = queue.declaration_result
+
+        status = {
+            "queue_name": AMQP_COA_QUEUE,
+            "exchange_name": AMQP_COA_EXCHANGE,
+            "message_count": queue_info.message_count,
+            "consumer_count": queue_info.consumer_count,
+            "status": "ok",
+        }
+
+        logger.info("Статус очереди CoA: %s", status)
+        return status
+
+    except Exception as e:
+        logger.error("Ошибка проверки состояния очереди CoA: %s", e, exc_info=True)
+        return {
+            "queue_name": AMQP_COA_QUEUE,
+            "exchange_name": AMQP_COA_EXCHANGE,
+            "message_count": 0,
+            "consumer_count": 0,
+            "status": "error",
+            "error": str(e),
+        }
 
 
 def _build_coa_message(
