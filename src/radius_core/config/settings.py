@@ -28,6 +28,9 @@ AMQP_SESSION_QUEUE: str = os.getenv("AMQP_SESSION_QUEUE", "session_queue")
 AMQP_TRAFFIC_QUEUE: str = os.getenv("AMQP_TRAFFIC_QUEUE", "traffic_queue")
 AMQP_AUTH_LOG_QUEUE: str = os.getenv("AMQP_AUTH_LOG_QUEUE", "auth_log_queue")
 AMQP_COA_QUEUE: str = os.getenv("AMQP_COA_QUEUE", "coa_requests")
+AMQP_COA_EXCHANGE: str = os.getenv("AMQP_COA_EXCHANGE", "coa_exchange")
+AMQP_DLQ_EXCHANGE: str = os.getenv("AMQP_DLQ_EXCHANGE", "coa_dlq_exchange")
+AMQP_DLQ_QUEUE: str = os.getenv("AMQP_DLQ_QUEUE", "dlq_coa_requests")
 
 
 RADIUS_SESSION_PREFIX: str = "radius:session:"

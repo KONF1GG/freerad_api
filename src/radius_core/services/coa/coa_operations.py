@@ -2,12 +2,11 @@
 
 import json
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 import aio_pika
 
-from ...config import AMQP_COA_QUEUE
+from ...config import AMQP_COA_QUEUE, AMQP_COA_EXCHANGE
 from ...models import SessionData
 from ...core.metrics import track_function
 
@@ -34,8 +33,16 @@ async def send_coa_to_queue(
         bool: True если запрос успешно отправлен, False в противном случае
     """
     try:
+        # Создаем COA exchange (TOPIC для гибкой маршрутизации)
+        coa_exchange = await rabbitmq.declare_exchange(
+            AMQP_COA_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
+        )
+
         # Объявляем очередь для CoA запросов
         queue = await rabbitmq.declare_queue(AMQP_COA_QUEUE, durable=True)
+
+        # Привязываем очередь к exchange с правильным routing key
+        await queue.bind(coa_exchange, routing_key="coa.request.*")
 
         # Создаем копию session_data с преобразованными datetime объектами
         processed_session_data = _process_session_data_for_coa(session_data)
@@ -45,20 +52,24 @@ async def send_coa_to_queue(
             request_type, processed_session_data, attributes, reason
         )
 
-        # Отправляем сообщение в очередь
-        await rabbitmq.default_exchange.publish(
+        # Определяем routing key в зависимости от типа запроса
+        routing_key = f"coa.request.{request_type}"
+
+        # Отправляем сообщение через COA exchange
+        await coa_exchange.publish(
             aio_pika.Message(
                 body=json.dumps(message_data, ensure_ascii=False).encode(),
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=queue.name,
+            routing_key=routing_key,
         )
 
-        # logger.debug(
-        #     "CoA запрос %s отправлен в очередь для сессии %s",
-        #     request_type,
-        #     processed_session_data.get("Acct-Session-Id", "unknown"),
-        # )
+        logger.debug(
+            "CoA запрос %s отправлен в очередь через exchange %s с routing key %s",
+            request_type,
+            AMQP_COA_EXCHANGE,
+            routing_key,
+        )
         return True
 
     except Exception as e:
