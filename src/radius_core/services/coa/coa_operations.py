@@ -85,7 +85,7 @@ def _process_session_data_for_coa(session_data: Dict[str, Any]) -> Dict[str, Any
 
 def _build_coa_message(
     request_type: str,
-    session_data: Dict[str, Any],
+    session_data_for_coa: Dict[str, Any],
     attributes: Optional[Dict[str, Any]] = None,
     reason: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -93,9 +93,8 @@ def _build_coa_message(
     message_data = {
         "type": request_type,
         "reason": reason,
-        "session_data": session_data,
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-        "request_id": f"{request_type}_{session_data.get('Acct-Session-Id', 'unknown')}_{int(time.time())}",
+        "session_data": session_data_for_coa,
+        "timestamp": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }
 
     # Добавляем атрибуты для update запросов
@@ -119,21 +118,25 @@ async def send_coa_session_kill(
         bool: True если команда успешно отправлена
     """
     try:
-        session_data = session_req.model_dump(by_alias=True)
+        data_for_coa = {
+            "Acct-Session-Id": session_req.Acct_Session_Id,
+            "NAS-IP-Address": session_req.NAS_IP_Address,
+            "NAS-Port-Id": session_req.NAS_Port_Id,
+        }
         # logger.debug("Данные сессии для отправки Coa kill: %s", session_data)
 
         # Отправляем CoA kill запрос в очередь
-        success = await send_coa_to_queue("kill", session_data, rabbitmq, reason=reason)
+        success = await send_coa_to_queue("kill", data_for_coa, rabbitmq, reason=reason)
 
         if success:
             logger.info(
                 "CoA команда на завершение сессии отправлена в очередь: %s",
-                session_data.get("Acct-Session-Id", "unknown"),
+                data_for_coa.get("Acct-Session-Id", "unknown"),
             )
         else:
             logger.warning(
                 "CoA команда на завершение сессии не была отправлена в очередь: %s",
-                session_data.get("Acct-Session-Id", "unknown"),
+                data_for_coa.get("Acct-Session-Id", "unknown"),
             )
 
         return success
@@ -165,13 +168,17 @@ async def send_coa_session_set(
         bool: True если команда успешно отправлена
     """
     try:
-        session_data = session_req.model_dump(by_alias=True)
+        data_for_coa = {
+            "Acct-Session-Id": session_req.Acct_Session_Id,
+            "NAS-IP-Address": session_req.NAS_IP_Address,
+            "NAS-Port-Id": session_req.NAS_Port_Id,
+        }
         # logger.debug("Данные сессии для отправки Coa update: %s", session_data)
 
         # Отправляем CoA update запрос в очередь
         success = await send_coa_to_queue(
             "update",
-            session_data,
+            data_for_coa,
             rabbitmq,
             attributes,
             reason=reason,
@@ -181,14 +188,14 @@ async def send_coa_session_set(
             logger.info(
                 "CoA команда на обновление сессии отправлена в очередь: %s, "
                 "атрибуты: %s",
-                session_data.get("Acct_Session_Id", "unknown"),
+                data_for_coa.get("Acct_Session_Id", "unknown"),
                 attributes,
             )
         else:
             logger.warning(
                 "CoA команда на обновление сессии не была отправлена в очередь: %s, "
                 "атрибуты: %s",
-                session_data.get("Acct_Session_Id", "unknown"),
+                data_for_coa.get("Acct_Session_Id", "unknown"),
                 attributes,
             )
 
