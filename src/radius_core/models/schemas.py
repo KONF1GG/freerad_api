@@ -220,7 +220,6 @@ class VideoDeviceInfo(BaseModel):
 class VideoLoginSearchResult(VideoDeviceInfo):
     """Модель для результата поиска видеокамеры с ключом Redis."""
 
-    login: Optional[str] = Field(None, description="Логин видеокамеры")
     key: Optional[str] = Field(None, description="Ключ Redis для видеокамеры")
     auth_type: Optional[str] = Field(default="VIDEO", description="Тип аутентификации")
 
