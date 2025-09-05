@@ -7,10 +7,6 @@ from .coa import (
 )
 from .auth import (
     auth,
-    find_duplicate_sessions_by_username_vlan,
-    find_duplicate_sessions_by_onu_mac,
-    find_device_sessions_by_device_data,
-    kill_duplicate_sessions,
 )
 from .accounting import process_accounting
 from .monitoring import (
@@ -45,11 +41,6 @@ __all__ = [
     # Проверка сервисов
     "check_and_correct_service_state",
     "check_and_correct_services",
-    # Обработка дублирующих сессий
-    "find_duplicate_sessions_by_username_vlan",
-    "find_duplicate_sessions_by_onu_mac",
-    "find_device_sessions_by_device_data",
-    "kill_duplicate_sessions",
     # CRUD операции
     "get_session_from_redis",
     "enrich_session_with_login",

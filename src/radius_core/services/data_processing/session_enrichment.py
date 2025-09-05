@@ -4,7 +4,7 @@ import logging
 from typing import Optional, Union
 from pydantic import ValidationError
 
-from radius_core.models.schemas import VideoLoginSearchResult
+from ...models.schemas import VideoLoginSearchResult
 
 from ...models import AccountingData, EnrichedSessionData, LoginSearchResult
 

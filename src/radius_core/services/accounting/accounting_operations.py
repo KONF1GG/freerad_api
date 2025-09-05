@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from fastapi import HTTPException
 
-from radius_core.models.schemas import (
+from ...models.schemas import (
     EnrichedSessionData,
     LoginSearchResult,
 )
@@ -61,7 +61,6 @@ async def process_accounting(
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
 
-
         event_timestamp = int(
             session_req.Event_Timestamp.astimezone(timezone.utc).timestamp()
         )
@@ -79,9 +78,7 @@ async def process_accounting(
 
         if login and login.auth_type == "VIDEO":
             # Получаем логин камеры из Redis
-            camera_login = await get_camera_login_from_redis(
-                login, redis
-            )
+            camera_login = await get_camera_login_from_redis(login, redis)
             if camera_login:
                 login.login = camera_login
 
@@ -99,7 +96,6 @@ async def process_accounting(
                 "Добавление сервиса в основную сессию (%s) %s", packet_type, session_id
             )
             await update_main_session_service(session_req, redis)
-
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if packet_type != "Stop" and login and login.auth_type != "VIDEO":
@@ -207,7 +203,12 @@ async def _handle_session_closure_conditions(
             logger.info("Логин %s не найден в Redis, просто логируем", stored_login)
 
     # 2. Логин изменился
-    elif session_stored and current_login and stored_login and stored_login != current_login:
+    elif (
+        session_stored
+        and current_login
+        and stored_login
+        and stored_login != current_login
+    ):
         logger.warning(
             "Логин изменился с %s на %s, завершаем сессию. %s",
             stored_login,

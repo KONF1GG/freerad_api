@@ -6,8 +6,8 @@ import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
-from radius_core.models.schemas import LoginSearchResult, VideoLoginSearchResult
-from radius_core.services.monitoring.service_utils import check_service_expiry
+from ...models.schemas import LoginSearchResult, VideoLoginSearchResult
+from ..monitoring.service_utils import check_service_expiry
 
 from ..storage.search_operations import (
     find_login_by_session,

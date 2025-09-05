@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 
-from radius_core.config.settings import RADIUS_INDEX_NAME_SESSION
+from ...config.settings import RADIUS_INDEX_NAME_SESSION
 
 from ...models import EnrichedSessionData, SessionData
 from ...clients import execute_redis_command

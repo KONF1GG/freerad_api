@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-from radius_core.utils.helpers import now_str
+from ...utils.helpers import now_str
 
 from ...models import SessionData, TrafficData, AuthDataLog
 from ...clients import rmq_send_message

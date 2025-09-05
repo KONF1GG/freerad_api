@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 from pydantic import ValidationError
 
-from radius_core.config.settings import RADIUS_LOGIN_PREFIX
+from ...config.settings import RADIUS_LOGIN_PREFIX
 
 from ...models import SessionData
 from ...clients import execute_redis_command, execute_redis_pipeline

@@ -7,8 +7,8 @@ import asyncio
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
 
-from radius_core.config.settings import RADIUS_LOGIN_PREFIX
-from radius_core.services.storage.search_operations import (
+from ...config.settings import RADIUS_LOGIN_PREFIX
+from ..storage.search_operations import (
     find_sessions_by_login,
     search_redis,
 )
