@@ -67,10 +67,10 @@ async def check_and_correct_service_state(
             login_name,
         )
         if speed:
-            expected_speed_mb = float(speed) * 1.1
+            expected_speed_mb = int(float(speed) * 1.1)
             coa_attributes = {
                 "ERX-Service-Activate:1": "INET-FREEDOM("
-                + str(int(expected_speed_mb))
+                + str(expected_speed_mb)
                 + "m)",
                 "ERX-Service-Deactivate": "NOINET-NOMONEY",
             }
@@ -114,7 +114,7 @@ async def check_and_correct_service_state(
                 # Нет суффикса - это биты в секунду, преобразуем в Mb
                 service_speed_mb = float(speed_str) / 1000000  # биты -> Mb
 
-            expected_speed_mb = float(speed) * 1.1
+            expected_speed_mb = int(float(speed) * 1.1)
 
             if abs(service_speed_mb - expected_speed_mb) >= 0.01:
                 logger.warning(
@@ -125,7 +125,7 @@ async def check_and_correct_service_state(
                 )
                 coa_attributes = {
                     "ERX-Service-Activate:1": "INET-FREEDOM("
-                    + str(int(expected_speed_mb))
+                    + str(expected_speed_mb)
                     + "m)",
                     "ERX-Service-Deactivate": "INET-FREEDOM",
                 }
