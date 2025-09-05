@@ -32,7 +32,6 @@ async def check_and_correct_service_state(
     if not session.ERX_Service_Session:
         return None
 
-
     # Получаем параметры услуги
     timeto = getattr(
         getattr(getattr(login_data, "servicecats", None), "internet", None),
@@ -72,7 +71,7 @@ async def check_and_correct_service_state(
                 "ERX-Service-Activate:1": "INET-FREEDOM("
                 + str(int(expected_speed_mb))
                 + "m)",
-                "ERX-Service-Deactivate": "INET-FREEDOM",
+                "ERX-Service-Deactivate": "NOINET-NOMONEY",
             }
             reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
@@ -90,7 +89,11 @@ async def check_and_correct_service_state(
             login_name,
         )
         reason = f"Service expired for {login_name}, blocking access"
-        await send_coa_session_kill(session, channel, reason=reason)
+        coa_attributes = {
+            "ERX-Service-Activate:1": "NOINET-NOMONEY()",
+            "ERX-Service-Deactivate": "INET-FREEDOM",
+        }
+        await send_coa_session_set(session, channel, coa_attributes, reason=reason)
         logger.info("Отправка CoA на убийство сессии для логина %s", login_name)
         return AccountingResponse(
             action="kill",

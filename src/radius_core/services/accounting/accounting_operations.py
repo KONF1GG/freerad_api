@@ -1,7 +1,6 @@
 """Операции аккаунтинга RADIUS."""
 
 import asyncio
-import time
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -24,6 +23,7 @@ from ...clients import execute_redis_command
 
 from ..storage.search_operations import (
     find_login_by_session,
+    get_camera_login_from_redis,
 )
 
 from ..data_processing import (
@@ -81,8 +81,11 @@ async def process_accounting(
         )
 
         if login and login.auth_type == "VIDEO":
-            # TODO заглянуть в Redis в ключ camera:%id%, где id это номер камеры (1529) из ключа device:cam0001529, и оттуда взять login из logins[0]. Сохранить его в сессию в login
-            ...
+            # Получаем логин камеры из Redis
+            camera_login = await get_camera_login_from_redis(login, redis)
+            if camera_login:
+                # Обновляем login в объекте login
+                login.login = camera_login
 
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)

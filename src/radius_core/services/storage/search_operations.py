@@ -327,3 +327,57 @@ async def find_sessions_by_login(
     except Exception as e:
         logger.error("Error searching sessions for login '%s': %s", login, e)
         return []
+
+
+@track_function("redis", "get_camera_login")
+async def get_camera_login_from_redis(
+    video_login: VideoLoginSearchResult, redis
+) -> Optional[str]:
+    """
+    Получает логин камеры из Redis по ключу camera:%id%.
+
+    Args:
+        video_login: Объект VideoLoginSearchResult с данными видеокамеры
+        redis: Асинхронный Redis-клиент
+
+    Returns:
+        Optional[str]: Логин камеры или None, если не найден
+    """
+    try:
+        if not video_login.key or not video_login.key.startswith("device:cam"):
+            logger.warning(
+                "Неожиданный формат ключа для видеокамеры: %s", video_login.key
+            )
+            return None
+
+        # Извлекаем ID камеры из ключа device:cam0001529 -> 1529
+        camera_id = video_login.key.replace("device:cam", "").lstrip("0")
+        if not camera_id:  # Проверяем, что ID не пустой
+            logger.warning("Не удалось извлечь ID камеры из ключа %s", video_login.key)
+            return None
+
+        # Получаем данные камеры из ключа camera:%id%
+        camera_key = f"camera:{camera_id}"
+        camera_data = await execute_redis_command(redis, "JSON.GET", camera_key)
+
+        if not camera_data or not isinstance(camera_data, dict):
+            logger.warning("Данные камеры не найдены для ключа %s", camera_key)
+            return None
+
+        # Извлекаем login из logins[0]
+        logins = camera_data.get("logins", [])
+        if not logins or len(logins) == 0:
+            logger.warning("Не найдены logins в данных камеры %s", camera_key)
+            return None
+
+        camera_login = logins[0]
+        logger.info("Получен login для видеокамеры %s: %s", camera_id, camera_login)
+        return camera_login
+
+    except Exception as e:
+        logger.error(
+            "Ошибка при получении данных камеры %s: %s",
+            video_login.key if video_login else "unknown",
+            e,
+        )
+        return None
