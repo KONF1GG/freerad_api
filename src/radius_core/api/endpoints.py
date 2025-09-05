@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from ..models.schemas import (
     AccountingData,
     AccountingResponse,
+    ServiceCheckResponse,
     AuthRequest,
     CorrectRequest,
 )
@@ -178,7 +179,7 @@ async def do_auth(data: AuthRequest, redis: RedisDependency) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.post("/check_and_correct_services/", response_model=Dict[str, Any])
+@router.post("/check_and_correct_services/", response_model=ServiceCheckResponse)
 @track_function("radius", "check_services")
 @track_http_request(method="POST", endpoint="/check_and_correct_services/")
 async def do_check_and_correct_services(

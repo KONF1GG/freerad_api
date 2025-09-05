@@ -4,7 +4,7 @@ import logging
 import re
 import time
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import HTTPException
 
 from radius_core.config.settings import RADIUS_LOGIN_PREFIX
@@ -13,7 +13,8 @@ from radius_core.services.storage.search_operations import (
     search_redis,
 )
 
-from ...models import SessionData, AccountingResponse, LoginSearchResult
+from ...models import SessionData, LoginSearchResult
+from ...models.schemas import ServiceCheckResponse
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
 from ..auth.duplicate_session_handler import (
     find_device_sessions_by_device_data,
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
-) -> Optional[AccountingResponse]:
+) -> Optional[Dict[str, Any]]:
     """Проверить и скорректировать состояние сервиса"""
     if not session.ERX_Service_Session:
         return None
@@ -76,11 +77,11 @@ async def check_and_correct_service_state(
             reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
             logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
             await send_coa_session_set(session, channel, coa_attributes, reason=reason)
-            return AccountingResponse(
-                action="update",
-                reason="router incorrectly blocked service, unblocked",
-                session_id=session.Acct_Unique_Session_Id,
-            )
+            return {
+                "action": "update",
+                "reason": "router incorrectly blocked service, unblocked",
+                "session_id": session.Acct_Unique_Session_Id,
+            }
 
     elif not router_says_blocked and service_should_be_blocked:
         # Роутер не заблокировал, но услуга должна быть заблокирована - блокируем
@@ -95,11 +96,11 @@ async def check_and_correct_service_state(
         }
         await send_coa_session_set(session, channel, coa_attributes, reason=reason)
         logger.info("Отправка CoA на убийство сессии для логина %s", login_name)
-        return AccountingResponse(
-            action="kill",
-            reason="service expired",
-            session_id=session.Acct_Unique_Session_Id,
-        )
+        return {
+            "action": "kill",
+            "reason": "service expired",
+            "session_id": session.Acct_Unique_Session_Id,
+        }
     else:
         # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
         match = re.search(r"\(([\d.]+[km]?)\)", session.ERX_Service_Session)
@@ -135,26 +136,32 @@ async def check_and_correct_service_state(
                 logger.info(
                     "Отправка CoA на обновление скорости для логина %s", login_name
                 )
-                return AccountingResponse(
-                    action="update",
-                    reason="speed mismatch corrected",
-                    session_id=session.Acct_Unique_Session_Id,
-                )
+                return {
+                    "action": "update",
+                    "reason": "speed mismatch corrected",
+                    "session_id": session.Acct_Unique_Session_Id,
+                }
     return None
 
 
-async def check_and_correct_services(key: str, redis, channel=None):
+async def check_and_correct_services(
+    key: str, redis, channel=None
+) -> ServiceCheckResponse:
     """Проверяет и корректирует сервисы для логина или устройства"""
 
     if key.startswith("login:"):
         result = await _check_login_services(key, redis, channel)
-        return result or {"status": "checked", "message": "No corrections needed"}
+        return result or ServiceCheckResponse(
+            action="noop", reason="No corrections needed", status="success"
+        )
 
     elif key.startswith("device:"):
         # Возможно будет логика для устройств
         ...
         # await _check_device_services(key, redis, rabbitmq)
-        return {"status": "checked", "message": "Device check not implemented"}
+        return ServiceCheckResponse(
+            action="noop", reason="Device check not implemented", status="success"
+        )
     else:
         logger.warning("Неизвестный тип ключа для проверки сервисов: %s", key)
         raise HTTPException(
@@ -369,7 +376,7 @@ async def _check_login_services(key: str, redis, channel=None):
                 session, login_data, login_name, channel
             )
             if correction_result:
-                return correction_result
+                return ServiceCheckResponse(**correction_result)
         except Exception as e:
             logger.error(
                 "Ошибка при проверке сервиса для сессии %s: %s",
@@ -379,7 +386,8 @@ async def _check_login_services(key: str, redis, channel=None):
             )
 
     # Если дошли до сюда, значит все сервисы корректны
-    return {
-        "status": "checked",
-        "message": f"All services checked for {login_name}, no corrections needed",
-    }
+    return ServiceCheckResponse(
+        action="noop",
+        reason=f"All services checked for {login_name}, no corrections needed",
+        status="success",
+    )

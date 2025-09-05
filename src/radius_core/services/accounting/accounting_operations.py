@@ -25,6 +25,7 @@ from ..storage.search_operations import (
     find_login_by_session,
     get_camera_login_from_redis,
 )
+from ..monitoring.service_checker import check_and_correct_service_state
 
 from ..data_processing import (
     enrich_session_with_login,
@@ -223,7 +224,7 @@ async def _handle_session_closure_conditions(
             logger.info("Логин %s не найден в Redis, просто логируем", stored_login)
 
     # 2. Логин изменился
-    if current_login and stored_login and stored_login != current_login:
+    elif current_login and stored_login and stored_login != current_login:
         logger.warning(
             "Логин изменился с %s на %s, завершаем сессию. %s",
             stored_login,
@@ -244,7 +245,7 @@ async def _handle_session_closure_conditions(
         )
 
     # 3. Сессия была UNAUTH, теперь авторизована
-    if not stored_login and current_login:
+    elif not stored_login and current_login:
         logger.warning(
             "Сессия %s была UNAUTH, теперь логин %s авторизован",
             session_unique_id,
@@ -262,6 +263,26 @@ async def _handle_session_closure_conditions(
             log_msg=f"Сессия {session_unique_id} завершена: UNAUTH -> AUTH",
             reason="session UNAUTH closed (now authorized)",
         )
+    else:
+        # Сессия нормальная, проверяем состояние сервисов
+        if login and session_stored:
+            try:
+                correction_result = await check_and_correct_service_state(
+                    session_stored, login, login.login
+                )
+                if correction_result:
+                    logger.info(
+                        "Выполнена коррекция сервисов для сессии %s: %s",
+                        session_unique_id,
+                        correction_result,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Ошибка при проверке состояния сервисов для сессии %s: %s",
+                    session_unique_id,
+                    e,
+                    exc_info=True,
+                )
 
     return None
 

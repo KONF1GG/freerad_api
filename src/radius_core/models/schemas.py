@@ -137,14 +137,21 @@ class BaseAccountingData(BaseModel):
 class AccountingData(BaseAccountingData):
     """Модель для данных учета."""
 
-
-class AccountingResponse(BaseModel):
-    """Модель для ответа на запрос учета."""
+class BaseResponse(BaseModel):
+    """Базовая модель для ответа."""
 
     action: Literal["noop", "kill", "update", "log"] = "noop"
     reason: Optional[str] = None
     status: Literal["success", "error"] = "success"
     session_id: Optional[str] = None
+
+
+class AccountingResponse(BaseResponse):
+    """Модель для ответа на запрос учета."""
+
+
+class ServiceCheckResponse(BaseResponse):
+    """Модель для ответа на запрос проверки сервисов."""
 
 
 class ServiceCategory(BaseModel):
