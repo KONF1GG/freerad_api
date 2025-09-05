@@ -33,7 +33,6 @@ from ..data_processing import (
 
 from ..storage.service_operations import (
     update_main_session_service,
-    update_main_session_from_service,
 )
 
 from ...models import AccountingData, AccountingResponse, SessionData
