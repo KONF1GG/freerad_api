@@ -101,6 +101,14 @@ async def process_accounting(
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
         session_id = session_req.Acct_Session_Id
+        # Если это сервисная сессия, тип update, логин есть и session_stored есть — логируем инфо
+        if (
+            is_service_session
+            and packet_type == "Update"
+            and login
+            and session_stored
+        ):
+            logger.info("ЭТО СЕРВИСНАЯ СЕССИЯ ПОДХОДИТ ДЛЯ ПРОВЕРКИ СЕРСИСОВ")
 
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
