@@ -107,13 +107,13 @@ async def process_accounting(
             await update_main_session_service(session_req, redis)
 
         # Обработка основных сессий - поиск сервисной сессии
-        else:
-            logger.info(
-                "Поиск сервисной сессии для основной сессии (%s) %s",
-                packet_type,
-                session_id,
-            )
-            await update_main_session_from_service(session_req, redis)
+        # else:
+        #     logger.info(
+        #         "Поиск сервисной сессии для основной сессии (%s) %s",
+        #         packet_type,
+        #         session_id,
+        #     )
+        # await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if (
@@ -142,7 +142,9 @@ async def process_accounting(
 
         # Обработка по типу пакета
         if packet_type == "Start":
-            await _handle_start_packet(session_new, event_time, redis_key, redis)
+            await _handle_start_packet(
+                session_new, event_time, redis_key, redis, is_service_session
+            )
         elif packet_type == "Interim-Update":
             await _handle_interim_update_packet(
                 session_new,
@@ -302,7 +304,11 @@ def _prepare_session_data(
 
 
 async def _handle_start_packet(
-    session_new: SessionData, event_time: datetime, redis_key: str, redis
+    session_new: SessionData,
+    event_time: datetime,
+    redis_key: str,
+    redis,
+    is_service_session: bool,
 ) -> None:
     """Обрабатывает пакет START"""
     logger.info("Обработка пакета START")
@@ -311,7 +317,8 @@ async def _handle_start_packet(
     session_new.Acct_Session_Time = 0
     session_new.Acct_Stop_Time = None
 
-    await save_session_to_redis(session_new, redis_key, redis)
+    if not is_service_session:
+        await save_session_to_redis(session_new, redis_key, redis)
 
     asyncio.create_task(
         _send_to_queue_with_logging(send_to_session_queue, session_new, "session_queue")
@@ -335,7 +342,8 @@ async def _handle_interim_update_packet(
         )
 
     session_new.Acct_Update_Time = event_time
-    await save_session_to_redis(session_new, redis_key, redis)
+    if not is_service_session:
+        await save_session_to_redis(session_new, redis_key, redis)
 
     # Отправляем во все очереди
     asyncio.create_task(

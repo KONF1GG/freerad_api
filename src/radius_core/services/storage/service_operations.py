@@ -126,94 +126,94 @@ async def update_main_session_service(
         return False
 
 
-async def update_main_session_from_service(
-    main_session_req: EnrichedSessionData, redis
-) -> bool:
-    """
-    Находит сервисную сессию для основной сессии и обновляет поле ERX-Service-Session в session_req.
-    Args:
-        main_session_req: Данные основной сессии (будет обновлен)
-        redis: Redis client
-    Returns:
-        bool: True если обновление прошло успешно, False если сервисная сессия не найдена
-    """
-    try:
-        main_session_id = main_session_req.Acct_Session_Id
+# async def update_main_session_from_service(
+#     main_session_req: EnrichedSessionData, redis
+# ) -> bool:
+#     """
+#     Находит сервисную сессию для основной сессии и обновляет поле ERX-Service-Session в session_req.
+#     Args:
+#         main_session_req: Данные основной сессии (будет обновлен)
+#         redis: Redis client
+#     Returns:
+#         bool: True если обновление прошло успешно, False если сервисная сессия не найдена
+#     """
+#     try:
+#         main_session_id = main_session_req.Acct_Session_Id
 
-        logger.info(
-            "Поиск сервисной сессии для основной сессии: %s",
-            main_session_id,
-        )
+#         logger.info(
+#             "Поиск сервисной сессии для основной сессии: %s",
+#             main_session_id,
+#         )
 
-        # Поиск сервисной сессии по паттерну main_session_id:*
-        index = RADIUS_INDEX_NAME_SESSION
-        # Экранируем специальные символы в main_session_id
-        escaped_session_id = main_session_id.replace("-", "\\-").replace(":", "\\:")
-        query = f"@Acct\\-Session\\-Id:{{{escaped_session_id}*}}"
-        # Получаем сервисную сессию из Redis
-        result = await execute_redis_command(redis, "FT.SEARCH", index, query)
+#         # Поиск сервисной сессии по паттерну main_session_id:*
+#         index = RADIUS_INDEX_NAME_SESSION
+#         # Экранируем специальные символы в main_session_id
+#         escaped_session_id = main_session_id.replace("-", "\\-").replace(":", "\\:")
+#         query = f"@Acct\\-Session\\-Id:{{{escaped_session_id}*}}"
+#         # Получаем сервисную сессию из Redis
+#         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 
-        if result and result[0] > 0:
-            num_results = result[0]
-            logger.info(
-                "MIAN SESSION: Найдено %s сервисных сессий для основной сессии %s",
-                num_results,
-                main_session_id,
-            )
-            for i in range(num_results):
-                try:
-                    fields = result[2 + i * 2]
-                    if (
-                        isinstance(fields, list)
-                        and len(fields) >= 2
-                        and fields[0] == "$"
-                    ):
-                        doc_data = fields[1]
-                        if isinstance(doc_data, bytes):
-                            doc_data = doc_data.decode("utf-8")
-                        session_dict = json.loads(doc_data)
-                        service_session_key = result[2 + i * 2 - 1]
-                        # Получаем поле ERX-Service-Session из сервисной сессии
-                        service_session_value = session_dict.get("ERX-Service-Session")
-                        if service_session_value:
-                            logger.info(
-                                "MIAN SESSION: Найдено поле ERX-Service-Session в сервисной сессии %s: %s",
-                                service_session_key,
-                                service_session_value,
-                            )
+#         if result and result[0] > 0:
+#             num_results = result[0]
+#             logger.info(
+#                 "MIAN SESSION: Найдено %s сервисных сессий для основной сессии %s",
+#                 num_results,
+#                 main_session_id,
+#             )
+#             for i in range(num_results):
+#                 try:
+#                     fields = result[2 + i * 2]
+#                     if (
+#                         isinstance(fields, list)
+#                         and len(fields) >= 2
+#                         and fields[0] == "$"
+#                     ):
+#                         doc_data = fields[1]
+#                         if isinstance(doc_data, bytes):
+#                             doc_data = doc_data.decode("utf-8")
+#                         session_dict = json.loads(doc_data)
+#                         service_session_key = result[2 + i * 2 - 1]
+#                         # Получаем поле ERX-Service-Session из сервисной сессии
+#                         service_session_value = session_dict.get("ERX-Service-Session")
+#                         if service_session_value:
+#                             logger.info(
+#                                 "MIAN SESSION: Найдено поле ERX-Service-Session в сервисной сессии %s: %s",
+#                                 service_session_key,
+#                                 service_session_value,
+#                             )
 
-                            # Обновляем данные в session_req
-                            main_session_req.ERX_Service_Session = service_session_value
-                            logger.info(
-                                "MIAN SESSION: Обновлено поле ERX-Service-Session в session_req: %s",
-                                service_session_value,
-                            )
-                            return True
-                        else:
-                            logger.warning(
-                                "MIAN SESSION: ERX-Service-Session не найден в сервисной сессии %s",
-                                service_session_key,
-                            )
-                            continue
+#                             # Обновляем данные в session_req
+#                             main_session_req.ERX_Service_Session = service_session_value
+#                             logger.info(
+#                                 "MIAN SESSION: Обновлено поле ERX-Service-Session в session_req: %s",
+#                                 service_session_value,
+#                             )
+#                             return True
+#                         else:
+#                             logger.warning(
+#                                 "MIAN SESSION: ERX-Service-Session не найден в сервисной сессии %s",
+#                                 service_session_key,
+#                             )
+#                             continue
 
-                except Exception as e:
-                    logger.error("Ошибка обработки результата %s: %s", i, e)
-                    continue
+#                 except Exception as e:
+#                     logger.error("Ошибка обработки результата %s: %s", i, e)
+#                     continue
 
-            logger.warning(
-                "MIAN SESSION: Не удалось найти сервисную сессию для основной сессии %s",
-                main_session_id,
-            )
-            return False
-        else:
-            logger.warning(
-                "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s",
-                main_session_id,
-            )
-            return False
+#             logger.warning(
+#                 "MIAN SESSION: Не удалось найти сервисную сессию для основной сессии %s",
+#                 main_session_id,
+#             )
+#             return False
+#         else:
+#             logger.warning(
+#                 "MIAN SESSION: Сервисная сессия не найдена для основной сессии %s",
+#                 main_session_id,
+#             )
+#             return False
 
-    except Exception as e:
-        logger.error(
-            "MIAN SESSION: Ошибка при поиске сервисной сессии: %s", e, exc_info=True
-        )
-        return False
+#     except Exception as e:
+#         logger.error(
+#             "MIAN SESSION: Ошибка при поиске сервисной сессии: %s", e, exc_info=True
+#         )
+#         return False
