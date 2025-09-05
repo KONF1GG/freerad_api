@@ -20,7 +20,7 @@ from ..auth.duplicate_session_handler import (
     kill_duplicate_sessions,
 )
 from .service_utils import check_service_expiry
-from ...utils import nasportid_parse, is_mac_username, mac_from_username
+from ...utils import is_mac_username, mac_from_username
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ async def check_and_correct_service_state(
         "timeto",
         None,
     )
-    if login_data.speed:
+    if login_data.speed and login_data.speed != "0":
         speed = login_data.speed
     else:
         speed = getattr(

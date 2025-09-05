@@ -80,6 +80,10 @@ async def process_accounting(
             find_login_by_session(session_req, redis),
         )
 
+        if login and login.auth_type == "VIDEO":
+            # TODO заглянуть в Redis в ключ camera:%id%, где id это номер камеры (1529) из ключа device:cam0001529, и оттуда взять login из logins[0]. Сохранить его в сессию в login
+            ...
+
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)
 
@@ -109,20 +113,24 @@ async def process_accounting(
             await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
-        if session_stored and packet_type != "Stop":
-            if login and login.auth_type != "VIDEO":
-                session_closure_result = await _handle_session_closure_conditions(
-                    redis,
-                    rabbitmq,
-                    redis_key,
-                    session_stored,
-                    session_req,
-                    event_time,
-                    session_unique_id,
-                    login,
-                )
-                if session_closure_result:
-                    return session_closure_result
+        if (
+            session_stored
+            and packet_type != "Stop"
+            and login
+            and login.auth_type != "VIDEO"
+        ):
+            result = await _handle_session_closure_conditions(
+                redis,
+                rabbitmq,
+                redis_key,
+                session_stored,
+                session_req,
+                event_time,
+                session_unique_id,
+                login,
+            )
+            if result:
+                return result
 
         # Создаем или обновляем сессию
         session_new = _prepare_session_data(
