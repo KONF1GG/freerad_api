@@ -104,7 +104,7 @@ async def process_accounting(
         # Если это сервисная сессия, тип update, логин есть и session_stored есть — логируем инфо
         if (
             is_service_session
-            and packet_type == "Update"
+            and packet_type == "Interim-Update"
             and login
             and session_stored
         ):
