@@ -101,14 +101,6 @@ async def process_accounting(
         service = session_req.ERX_Service_Session
         is_service_session = bool(service)
         session_id = session_req.Acct_Session_Id
-        # Если это сервисная сессия, тип update, логин есть и session_stored есть — логируем инфо
-        if (
-            is_service_session
-            and packet_type == "Interim-Update"
-            and login
-            and session_stored
-        ):
-            logger.info("ЭТО СЕРВИСНАЯ СЕССИЯ ПОДХОДИТ ДЛЯ ПРОВЕРКИ СЕРСИСОВ")
 
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
@@ -282,13 +274,12 @@ async def _handle_session_closure_conditions(
         # Сессия нормальная, проверяем состояние сервисов
         if (
             login
-            and session_stored
             and is_service_session
             and session_req.Acct_Status_Type == "Interim-Update"
         ):
             try:
                 correction_result = await check_and_correct_service_state(
-                    session_stored, login, login.login, rabbitmq
+                    session_req, login, login.login, rabbitmq
                 )
                 if correction_result:
                     logger.info(
