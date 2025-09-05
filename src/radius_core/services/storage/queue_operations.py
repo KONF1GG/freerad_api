@@ -52,7 +52,7 @@ async def send_to_session_queue(
     try:
         # Создаем копию для работы, чтобы не мутировать исходный объект
         session_copy = session_data.model_copy()
-        
+
         # Быстрая оптимизация временных меток
         if session_copy.Event_Timestamp:
             session_copy.Event_Timestamp = _ensure_utc(session_copy.Event_Timestamp)
@@ -106,7 +106,7 @@ async def send_to_traffic_queue(
         if not session_new:
             logger.error("session_new не может быть None")
             return False
-        
+
         if not session_new.Acct_Unique_Session_Id:
             logger.error("Acct_Unique_Session_Id обязателен")
             return False
@@ -184,11 +184,11 @@ async def send_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
         if not auth_data:
             logger.error("auth_data не может быть None")
             return False
-            
+
         if not auth_data.username:
             logger.error("username обязателен для лога авторизации")
             return False
-            
+
         result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)
         if result:
             logger.info("Лог авторизации отправлен в очередь: %s", auth_data.username)

@@ -22,23 +22,25 @@ from ...utils import is_mac_username, mac_from_username
 logger = logging.getLogger(__name__)
 
 
-def _get_service_params(login_data: LoginSearchResult) -> tuple[Optional[int], Optional[str]]:
+def _get_service_params(
+    login_data: LoginSearchResult,
+) -> tuple[Optional[int], Optional[str]]:
     """Извлекает параметры услуги из данных логина."""
     servicecats = getattr(login_data, "servicecats", None)
     if not servicecats:
         return None, None
-        
+
     internet = getattr(servicecats, "internet", None)
     if not internet:
         return None, None
-        
+
     timeto = getattr(internet, "timeto", None)
     speed = getattr(internet, "speed", None)
-    
+
     # Если speed в login_data не пустой, используем его
     if login_data.speed and login_data.speed != "0":
         speed = login_data.speed
-        
+
     return timeto, speed
 
 
@@ -48,9 +50,9 @@ def _parse_service_speed(service_session: str) -> Optional[float]:
         match = re.search(r"\(([\d.]+[km]?)\)", service_session)
         if not match:
             return None
-            
+
         speed_str = match.group(1)
-        
+
         if speed_str.endswith("k"):
             return float(speed_str[:-1]) / 1000  # k -> Mb
         elif speed_str.endswith("m"):
@@ -102,8 +104,12 @@ async def check_and_correct_service_state(
                     "ERX-Service-Deactivate": "NOINET-NOMONEY",
                 }
                 reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_kb}k"
-                logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
-                await send_coa_session_set(session, channel, coa_attributes, reason=reason)
+                logger.info(
+                    "Отправка CoA на обновление скорости для логина %s", login_name
+                )
+                await send_coa_session_set(
+                    session, channel, coa_attributes, reason=reason
+                )
                 return {
                     "action": "update",
                     "reason": "router incorrectly blocked service, unblocked",
@@ -138,8 +144,8 @@ async def check_and_correct_service_state(
             if service_speed_mb is not None:
                 try:
                     expected_speed_kb = int(float(speed) * 1100)
-                    
-                    if abs(service_speed_mb - expected_speed_kb/1000) >= 0.01:
+
+                    if abs(service_speed_mb - expected_speed_kb / 1000) >= 0.01:
                         logger.warning(
                             "Неправильная скорость для %s: ожидалось %s k, получено %s Mb",
                             login_name,
@@ -157,7 +163,8 @@ async def check_and_correct_service_state(
                             session, channel, coa_attributes, reason=reason
                         )
                         logger.info(
-                            "Отправка CoA на обновление скорости для логина %s", login_name
+                            "Отправка CoA на обновление скорости для логина %s",
+                            login_name,
                         )
                         return {
                             "action": "update",
@@ -174,12 +181,12 @@ async def check_and_correct_services(
     key: str, redis, channel=None
 ) -> ServiceCheckResponse:
     """Проверяет и корректирует сервисы для логина или устройства"""
-    
+
     # Валидация входных данных
     if not key:
         logger.warning("Key is empty")
         raise HTTPException(status_code=400, detail="Key cannot be empty")
-        
+
     if not redis:
         logger.warning("Redis client is None")
         raise HTTPException(status_code=500, detail="Redis client not available")
@@ -338,24 +345,29 @@ async def _check_login_services(key: str, redis, channel=None):
 
         # Выполняем все задачи и проверяем результаты
         results = await asyncio.gather(*kill_tasks, return_exceptions=True)
-        
+
         # Подсчитываем успешные и неудачные операции
         successful = sum(1 for result in results if not isinstance(result, Exception))
         failed = len(results) - successful
-        
+
         if failed > 0:
             logger.warning(
-                "Не удалось отправить CoA kill для %s из %s сессий", failed, len(sessions)
+                "Не удалось отправить CoA kill для %s из %s сессий",
+                failed,
+                len(sessions),
             )
             # Логируем ошибки
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(
-                        "Ошибка CoA kill для сессии %s: %s", 
-                        sessions[i].Acct_Unique_Session_Id, result
+                        "Ошибка CoA kill для сессии %s: %s",
+                        sessions[i].Acct_Unique_Session_Id,
+                        result,
                     )
         else:
-            logger.info("CoA kill команды успешно отправлены для всех %s сессий", len(sessions))
+            logger.info(
+                "CoA kill команды успешно отправлены для всех %s сессий", len(sessions)
+            )
 
         return {
             "status": "killed",
