@@ -219,7 +219,7 @@ async def send_coa_session_set(
     try:
         data_for_coa = {
             "login": session_req.login,
-            "Acct-Session-Id": session_req.Acct_Session_Id,
+            "Acct-Session-Id": session_req.Acct_Session_Id.split(":")[0] if ":" in session_req.Acct_Session_Id else session_req.Acct_Session_Id,
             "NAS-IP-Address": session_req.NAS_IP_Address,
         }
         # logger.debug("Данные сессии для отправки Coa update: %s", session_data)
