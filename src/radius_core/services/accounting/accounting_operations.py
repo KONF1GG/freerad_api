@@ -121,12 +121,7 @@ async def process_accounting(
         # await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
-        if (
-            session_stored
-            and packet_type != "Stop"
-            and login
-            and login.auth_type != "VIDEO"
-        ):
+        if packet_type != "Stop" and login and login.auth_type != "VIDEO":
             result = await _handle_session_closure_conditions(
                 redis,
                 rabbitmq,
@@ -192,7 +187,7 @@ async def _handle_session_closure_conditions(
     redis,
     rabbitmq,
     redis_key: str,
-    session_stored: SessionData,
+    session_stored: SessionData | None,
     session_req: EnrichedSessionData,
     event_time: datetime,
     session_unique_id: str,
@@ -200,11 +195,11 @@ async def _handle_session_closure_conditions(
     is_service_session: bool = False,
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
-    stored_login = session_stored.login
+    stored_login = session_stored.login if session_stored else None
     current_login = login.login if login else None
 
     # 1. Существующая сессия авторизована, а текущая нет
-    if stored_login and not current_login:
+    if session_stored and stored_login and not current_login:
         logger.warning(
             "Сессия %s найдена авторизованная, но сейчас логин %s не найден. ",
             session_unique_id,
@@ -231,7 +226,7 @@ async def _handle_session_closure_conditions(
             logger.info("Логин %s не найден в Redis, просто логируем", stored_login)
 
     # 2. Логин изменился
-    elif current_login and stored_login and stored_login != current_login:
+    elif session_stored and current_login and stored_login and stored_login != current_login:
         logger.warning(
             "Логин изменился с %s на %s, завершаем сессию. %s",
             stored_login,
@@ -252,7 +247,7 @@ async def _handle_session_closure_conditions(
         )
 
     # 3. Сессия была UNAUTH, теперь авторизована
-    elif not stored_login and current_login:
+    elif session_stored and not stored_login and current_login:
         logger.warning(
             "Сессия %s была UNAUTH, теперь логин %s авторизован",
             session_unique_id,
