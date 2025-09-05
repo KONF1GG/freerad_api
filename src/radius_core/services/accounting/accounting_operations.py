@@ -272,7 +272,12 @@ async def _handle_session_closure_conditions(
         )
     else:
         # Сессия нормальная, проверяем состояние сервисов
-        if login and session_stored and is_service_session:
+        if (
+            login
+            and session_stored
+            and is_service_session
+            and session_req.Acct_Status_Type == "Interim-Update"
+        ):
             try:
                 correction_result = await check_and_correct_service_state(
                     session_stored, login, login.login, rabbitmq
