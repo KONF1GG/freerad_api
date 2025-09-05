@@ -85,7 +85,7 @@ async def process_accounting(
             camera_login = await get_camera_login_from_redis(login, redis)
             if camera_login:
                 # Обновляем login в объекте login
-                login.login = camera_login
+                session_req.login = camera_login
 
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)
