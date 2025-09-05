@@ -124,7 +124,6 @@ async def _handle_regular_auth(
     """Обрабатывает авторизацию обычных пользователей"""
     sessions = await find_sessions_by_login(login.login or "", redis, login)
     session_count = len(sessions)
-    #    logger.debug("Найдено активных сессий: %s", session_count)
 
     # Проверяем лимит сессий
     if session_count >= session_limit:

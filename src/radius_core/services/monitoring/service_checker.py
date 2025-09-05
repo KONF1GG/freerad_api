@@ -16,37 +16,63 @@ from radius_core.services.storage.search_operations import (
 from ...models import SessionData, LoginSearchResult
 from ...models.schemas import ServiceCheckResponse
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
-from ..auth.duplicate_session_handler import (
-    find_device_sessions_by_device_data,
-    kill_duplicate_sessions,
-)
 from .service_utils import check_service_expiry
 from ...utils import is_mac_username, mac_from_username
 
 logger = logging.getLogger(__name__)
 
 
+def _get_service_params(login_data: LoginSearchResult) -> tuple[Optional[int], Optional[str]]:
+    """Извлекает параметры услуги из данных логина."""
+    servicecats = getattr(login_data, "servicecats", None)
+    if not servicecats:
+        return None, None
+        
+    internet = getattr(servicecats, "internet", None)
+    if not internet:
+        return None, None
+        
+    timeto = getattr(internet, "timeto", None)
+    speed = getattr(internet, "speed", None)
+    
+    # Если speed в login_data не пустой, используем его
+    if login_data.speed and login_data.speed != "0":
+        speed = login_data.speed
+        
+    return timeto, speed
+
+
+def _parse_service_speed(service_session: str) -> Optional[float]:
+    """Парсит скорость из ERX_Service_Session."""
+    try:
+        match = re.search(r"\(([\d.]+[km]?)\)", service_session)
+        if not match:
+            return None
+            
+        speed_str = match.group(1)
+        
+        if speed_str.endswith("k"):
+            return float(speed_str[:-1]) / 1000  # k -> Mb
+        elif speed_str.endswith("m"):
+            return float(speed_str[:-1])  # m -> Mb
+        else:
+            # Нет суффикса - это биты в секунду, преобразуем в Mb
+            return float(speed_str) / 1000000  # биты -> Mb
+    except (ValueError, AttributeError) as e:
+        logger.warning("Ошибка парсинга скорости из %s: %s", service_session, e)
+        return None
+
+
 async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[Dict[str, Any]]:
     """Проверить и скорректировать состояние сервиса"""
+
     if not session.ERX_Service_Session:
         return None
 
     # Получаем параметры услуги
-    timeto = getattr(
-        getattr(getattr(login_data, "servicecats", None), "internet", None),
-        "timeto",
-        None,
-    )
-    if login_data.speed and login_data.speed != "0":
-        speed = login_data.speed
-    else:
-        speed = getattr(
-            getattr(getattr(login_data, "servicecats", None), "internet", None),
-            "speed",
-            None,
-        )
+    timeto, speed = _get_service_params(login_data)
 
     # Проверяем срок действия услуги
     now_timestamp = time.time()
@@ -67,21 +93,25 @@ async def check_and_correct_service_state(
             login_name,
         )
         if speed:
-            expected_speed_mb = int(float(speed) * 1.1)
-            coa_attributes = {
-                "ERX-Service-Activate:1": "INET-FREEDOM("
-                + str(expected_speed_mb)
-                + "m)",
-                "ERX-Service-Deactivate": "NOINET-NOMONEY",
-            }
-            reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_mb}Mb"
-            logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
-            await send_coa_session_set(session, channel, coa_attributes, reason=reason)
-            return {
-                "action": "update",
-                "reason": "router incorrectly blocked service, unblocked",
-                "session_id": session.Acct_Unique_Session_Id,
-            }
+            try:
+                expected_speed_kb = int(float(speed) * 1100)
+                coa_attributes = {
+                    "ERX-Service-Activate:1": "INET-FREEDOM("
+                    + str(expected_speed_kb)
+                    + "k)",
+                    "ERX-Service-Deactivate": "NOINET-NOMONEY",
+                }
+                reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_kb}k"
+                logger.info("Отправка CoA на обновление скорости для логина %s", login_name)
+                await send_coa_session_set(session, channel, coa_attributes, reason=reason)
+                return {
+                    "action": "update",
+                    "reason": "router incorrectly blocked service, unblocked",
+                    "session_id": session.Acct_Unique_Session_Id,
+                }
+            except (ValueError, TypeError) as e:
+                logger.error("Ошибка преобразования скорости %s: %s", speed, e)
+                return None
 
     elif not router_says_blocked and service_should_be_blocked:
         # Роутер не заблокировал, но услуга должна быть заблокирована - блокируем
@@ -103,44 +133,40 @@ async def check_and_correct_service_state(
         }
     else:
         # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
-        match = re.search(r"\(([\d.]+[km]?)\)", session.ERX_Service_Session)
-        if match and speed:
-            speed_str = match.group(1)
-            if speed_str.endswith("k"):
-                service_speed_mb = float(speed_str[:-1]) / 1000  # k -> Mb
-            elif speed_str.endswith("m"):
-                service_speed_mb = float(speed_str[:-1])  # m -> Mb (оставляем как есть)
-            else:
-                # Нет суффикса - это биты в секунду, преобразуем в Mb
-                service_speed_mb = float(speed_str) / 1000000  # биты -> Mb
-
-            expected_speed_mb = int(float(speed) * 1.1)
-
-            if abs(service_speed_mb - expected_speed_mb) >= 0.01:
-                logger.warning(
-                    "Неправильная скорость для %s: ожидалось %s Mb, получено %s Mb",
-                    login_name,
-                    expected_speed_mb,
-                    service_speed_mb,
-                )
-                coa_attributes = {
-                    "ERX-Service-Activate:1": "INET-FREEDOM("
-                    + str(expected_speed_mb)
-                    + "m)",
-                    "ERX-Service-Deactivate": "INET-FREEDOM",
-                }
-                reason = f"Speed mismatch for {login_name}: expected {expected_speed_mb}Mb, got {service_speed_mb}Mb"
-                await send_coa_session_set(
-                    session, channel, coa_attributes, reason=reason
-                )
-                logger.info(
-                    "Отправка CoA на обновление скорости для логина %s", login_name
-                )
-                return {
-                    "action": "update",
-                    "reason": "speed mismatch corrected",
-                    "session_id": session.Acct_Unique_Session_Id,
-                }
+        if speed:
+            service_speed_mb = _parse_service_speed(session.ERX_Service_Session)
+            if service_speed_mb is not None:
+                try:
+                    expected_speed_kb = int(float(speed) * 1100)
+                    
+                    if abs(service_speed_mb - expected_speed_kb/1000) >= 0.01:
+                        logger.warning(
+                            "Неправильная скорость для %s: ожидалось %s k, получено %s Mb",
+                            login_name,
+                            expected_speed_kb,
+                            service_speed_mb,
+                        )
+                        coa_attributes = {
+                            "ERX-Service-Activate:1": "INET-FREEDOM("
+                            + str(expected_speed_kb)
+                            + "k)",
+                            "ERX-Service-Deactivate": "INET-FREEDOM",
+                        }
+                        reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
+                        await send_coa_session_set(
+                            session, channel, coa_attributes, reason=reason
+                        )
+                        logger.info(
+                            "Отправка CoA на обновление скорости для логина %s", login_name
+                        )
+                        return {
+                            "action": "update",
+                            "reason": "speed mismatch corrected",
+                            "session_id": session.Acct_Unique_Session_Id,
+                        }
+                except (ValueError, TypeError) as e:
+                    logger.error("Ошибка преобразования скорости %s: %s", speed, e)
+                    return None
     return None
 
 
@@ -148,6 +174,15 @@ async def check_and_correct_services(
     key: str, redis, channel=None
 ) -> ServiceCheckResponse:
     """Проверяет и корректирует сервисы для логина или устройства"""
+    
+    # Валидация входных данных
+    if not key:
+        logger.warning("Key is empty")
+        raise HTTPException(status_code=400, detail="Key cannot be empty")
+        
+    if not redis:
+        logger.warning("Redis client is None")
+        raise HTTPException(status_code=500, detail="Redis client not available")
 
     if key.startswith("login:"):
         result = await _check_login_services(key, redis, channel)
@@ -166,51 +201,6 @@ async def check_and_correct_services(
         logger.warning("Неизвестный тип ключа для проверки сервисов: %s", key)
         raise HTTPException(
             status_code=400, detail="Unknown key type for service check"
-        )
-
-
-async def _check_device_services(key: str, redis, channel=None):
-    """Проверяет сервисы для устройства"""
-    device_id = key.split(":", 1)[1]
-    # logger.debug("Проверка устройства: %s", device_id)
-
-    # Получаем данные устройства из Redis
-    try:
-        device_data = await search_redis(
-            redis,
-            query=f"@login:{{{device_id}}}",
-            index="idx:device",
-        )
-
-        if not device_data:
-            logger.warning("Данные устройства %s не найдены в Redis", device_id)
-            return
-
-        device_ip = getattr(device_data, "ipAddress", None)
-        device_mac = getattr(device_data, "mac", None)
-
-        # logger.debug(
-        #     "Данные устройства %s: IP=%s, MAC=%s", device_id, device_ip, device_mac
-        # )
-
-        # Найти конфликтующие сессии
-        duplicate_sessions = await find_device_sessions_by_device_data(
-            device_ip, device_mac, device_id, redis
-        )
-
-        if duplicate_sessions:
-            await kill_duplicate_sessions(
-                duplicate_sessions, f"device {device_id} IP/MAC mismatch", channel
-            )
-            logger.info(
-                "Завершено %s конфликтующих сессий для устройства %s",
-                len(duplicate_sessions),
-                device_id,
-            )
-
-    except Exception as e:
-        logger.error(
-            "Ошибка при обработке устройства %s: %s", device_id, e, exc_info=True
         )
 
 
@@ -346,11 +336,26 @@ async def _check_login_services(key: str, redis, channel=None):
                 )
             )
 
-        try:
-            await asyncio.gather(*kill_tasks, return_exceptions=True)
-            logger.info("CoA kill команды отправлены для ВСЕХ %s сессий", len(sessions))
-        except Exception as e:
-            logger.error("Ошибка при отправке CoA kill команд: %s", e, exc_info=True)
+        # Выполняем все задачи и проверяем результаты
+        results = await asyncio.gather(*kill_tasks, return_exceptions=True)
+        
+        # Подсчитываем успешные и неудачные операции
+        successful = sum(1 for result in results if not isinstance(result, Exception))
+        failed = len(results) - successful
+        
+        if failed > 0:
+            logger.warning(
+                "Не удалось отправить CoA kill для %s из %s сессий", failed, len(sessions)
+            )
+            # Логируем ошибки
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Ошибка CoA kill для сессии %s: %s", 
+                        sessions[i].Acct_Unique_Session_Id, result
+                    )
+        else:
+            logger.info("CoA kill команды успешно отправлены для всех %s сессий", len(sessions))
 
         return {
             "status": "killed",
@@ -391,3 +396,44 @@ async def _check_login_services(key: str, redis, channel=None):
         reason=f"All services checked for {login_name}, no corrections needed",
         status="success",
     )
+
+
+# async def _check_device_services(key: str, redis, channel=None):
+#     """Проверяет сервисы для устройства"""
+#     device_id = key.split(":", 1)[1]
+#     # logger.debug("Проверка устройства: %s", device_id)
+
+#     # Получаем данные устройства из Redis
+#     try:
+#         device_data = await search_redis(
+#             redis,
+#             query=f"@login:{{{device_id}}}",
+#             index="idx:device",
+#         )
+
+#         if not device_data:
+#             logger.warning("Данные устройства %s не найдены в Redis", device_id)
+#             return
+
+#         device_ip = getattr(device_data, "ipAddress", None)
+#         device_mac = getattr(device_data, "mac", None)
+
+#         # Найти конфликтующие сессии
+#         duplicate_sessions = await find_device_sessions_by_device_data(
+#             device_ip, device_mac, device_id, redis
+#         )
+
+#         if duplicate_sessions:
+#             await kill_duplicate_sessions(
+#                 duplicate_sessions, f"device {device_id} IP/MAC mismatch", channel
+#             )
+#             logger.info(
+#                 "Завершено %s конфликтующих сессий для устройства %s",
+#                 len(duplicate_sessions),
+#                 device_id,
+#             )
+
+#     except Exception as e:
+#         logger.error(
+#             "Ошибка при обработке устройства %s: %s", device_id, e, exc_info=True
+#         )

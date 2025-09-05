@@ -18,8 +18,7 @@ def parse_event(ts: str | datetime | dict) -> datetime:
         if isinstance(ts, dict):
             ts = ts.get("value", [0])[0]
             dt = parser.parse(ts)  # type: ignore[arg-type]
-            if ts is None:
-                dt = datetime.now(timezone.utc)
+            dt = datetime.now(timezone.utc)
         elif isinstance(ts, datetime):
             dt = ts
         elif isinstance(ts, (int, float)):
@@ -121,32 +120,3 @@ def mac_from_hex(hex_var: str) -> str:
             else:
                 return template.format(body).upper()
     return ":".join(hex_var[i : i + 2] for i in range(2, 14, 2)).upper()
-
-
-def repl_none(data: Union[Dict, Any]) -> Union[Dict, Any]:
-    """Замена None значений на пустые строки"""
-    if isinstance(data, dict):
-        return {k: repl_none(v) for k, v in data.items()}
-    elif data is None:
-        return ""
-    else:
-        return data
-
-
-def extract_speed_k(service_str: str) -> float:
-    """Извлекает скорость из строки вида (100k)"""
-    match = re.search(r"\(([\d.]+)k\)", service_str)
-    return float(match.group(1)) if match else 0
-
-
-def is_service_blocked(timeto: str | datetime) -> bool:
-    """Проверяет, истекло ли время доступа"""
-    dt = parse_event(timeto)
-    return dt < datetime.now(timezone.utc)
-
-
-def check_session_limit(login: str, sessions: list, limit: int = 2) -> tuple[str, str]:
-    """Проверяет, не превышено ли количество сессий для пользователя"""
-    if len(sessions) >= limit:
-        return "Reject", f"Session count over limit: {len(sessions)}"
-    return "Accept", "OK"

@@ -9,10 +9,9 @@ from fastapi import HTTPException
 from radius_core.models.schemas import (
     EnrichedSessionData,
     LoginSearchResult,
-    VideoLoginSearchResult,
 )
 
-from ...config import RADIUS_SESSION_PREFIX, RADIUS_LOGIN_PREFIX
+from ...config import RADIUS_SESSION_PREFIX
 from ..storage.queue_operations import (
     send_to_session_queue,
     send_to_traffic_queue,
@@ -22,8 +21,8 @@ from ..storage.redis_operations import (
     get_session_from_redis,
     save_session_to_redis,
     delete_session_from_redis,
+    _check_login_exists_in_redis,
 )
-from ...clients import execute_redis_command
 
 from ..storage.search_operations import (
     find_login_by_session,
@@ -47,17 +46,6 @@ from ...core.metrics import track_function
 logger = logging.getLogger(__name__)
 
 
-async def _check_login_exists_in_redis(login: str, redis) -> bool:
-    """Проверяет существование логина в Redis по ключу login:login"""
-    try:
-        login_key = f"{RADIUS_LOGIN_PREFIX}{login}"
-        result = await execute_redis_command(redis, "EXISTS", login_key)
-        return bool(result)
-    except Exception as e:
-        logger.error("Ошибка при проверке существования логина %s: %s", login, e)
-        return False
-
-
 @track_function("radius", "process_accounting")
 async def process_accounting(
     data: AccountingData, redis, rabbitmq
@@ -67,8 +55,13 @@ async def process_accounting(
     try:
         session_req = data
         packet_type = session_req.Acct_Status_Type
+        session_id = session_req.Acct_Session_Id
         session_unique_id = session_req.Acct_Unique_Session_Id
         event_time = session_req.Event_Timestamp
+        service = session_req.ERX_Service_Session
+        is_service_session = bool(service)
+
+
         event_timestamp = int(
             session_req.Event_Timestamp.astimezone(timezone.utc).timestamp()
         )
@@ -86,7 +79,7 @@ async def process_accounting(
 
         if login and login.auth_type == "VIDEO":
             # Получаем логин камеры из Redis
-            camera_login: VideoLoginSearchResult = await get_camera_login_from_redis(
+            camera_login = await get_camera_login_from_redis(
                 login, redis
             )
             if camera_login:
@@ -98,10 +91,6 @@ async def process_accounting(
         # Соединяем счетчики трафика
         session_req = process_traffic_data(session_req)
 
-        service = session_req.ERX_Service_Session
-        is_service_session = bool(service)
-        session_id = session_req.Acct_Session_Id
-
         # Обработка сервисных сессий
         if is_service_session and packet_type != "Stop":
             if packet_type == "Start":
@@ -111,14 +100,6 @@ async def process_accounting(
             )
             await update_main_session_service(session_req, redis)
 
-        # Обработка основных сессий - поиск сервисной сессии
-        # else:
-        #     logger.info(
-        #         "Поиск сервисной сессии для основной сессии (%s) %s",
-        #         packet_type,
-        #         session_id,
-        #     )
-        # await update_main_session_from_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
         if packet_type != "Stop" and login and login.auth_type != "VIDEO":

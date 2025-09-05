@@ -12,7 +12,6 @@ import logging
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 
-# from radius_core.services.storage.search_operations import find_login_by_session
 from ..models.schemas import (
     AccountingData,
     AccountingResponse,
@@ -201,34 +200,3 @@ async def do_check_and_correct_services(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# @router.post("/find_login_by_session/", response_model=Dict[str, Any])
-# @track_function("radius", "find_login_by_session")
-# @track_http_request(method="POST", endpoint="/find_login_by_session/")
-# async def find_login_by_session_endpoint(
-#     data: AuthRequest, redis: RedisDependency
-# ) -> Dict[str, Any]:
-#     """
-#     Выполняет поиск логина по данным сессии.
-#     """
-#     logger.info(
-#         "Обработка запроса поиска логина по сессии для пользователя: %s", data.User_Name
-#     )
-#     try:
-#         result = await find_login_by_session(data, redis)
-#         if result is None:
-#             logger.info("Логин не найден для пользователя: %s", data.User_Name)
-#             return {"result": None}
-#         logger.info("Логин найден для пользователя: %s", data.User_Name)
-#         return {"result": result.model_dump()}
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(
-#             "Ошибка при поиске логина по сессии для пользователя %s: %s",
-#             data.User_Name,
-#             e,
-#             exc_info=True,
-#         )
-#         raise HTTPException(status_code=500, detail=str(e)) from e

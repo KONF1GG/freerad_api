@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 # Кэш для UTC timezone
 _UTC_TZ = timezone.utc
 
+# Константа для полей трафика
+TRAFFIC_FIELDS = [
+    ("Acct_Input_Octets", "Acct-Input-Octets"),
+    ("Acct_Output_Octets", "Acct-Output-Octets"),
+    ("Acct_Input_Packets", "Acct-Input-Packets"),
+    ("Acct_Output_Packets", "Acct-Output-Packets"),
+    ("ERX_IPv6_Acct_Input_Octets", "ERX-IPv6-Acct-Input-Octets"),
+    ("ERX_IPv6_Acct_Output_Octets", "ERX-IPv6-Acct-Output-Octets"),
+    ("ERX_IPv6_Acct_Input_Packets", "ERX-IPv6-Acct-Input-Packets"),
+    ("ERX_IPv6_Acct_Output_Packets", "ERX-IPv6-Acct-Output-Packets"),
+]
+
 
 def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     """Быстрое приведение времени к UTC"""
@@ -38,42 +50,41 @@ async def send_to_session_queue(
     logger.info("Отправка сессии в очередь: %s", session_data.Acct_Unique_Session_Id)
 
     try:
+        # Создаем копию для работы, чтобы не мутировать исходный объект
+        session_copy = session_data.model_copy()
+        
         # Быстрая оптимизация временных меток
-        if session_data.Event_Timestamp:
-            session_data.Event_Timestamp = _ensure_utc(session_data.Event_Timestamp)
+        if session_copy.Event_Timestamp:
+            session_copy.Event_Timestamp = _ensure_utc(session_copy.Event_Timestamp)
 
         # Устанавливаем Acct_Update_Time если он еще не установлен
-        if not session_data.Acct_Update_Time:
-            session_data.Acct_Update_Time = (
-                session_data.Event_Timestamp or datetime.now(tz=_UTC_TZ)
+        if not session_copy.Acct_Update_Time:
+            session_copy.Acct_Update_Time = (
+                session_copy.Event_Timestamp or datetime.now(tz=_UTC_TZ)
             )
         else:
-            session_data.Acct_Update_Time = _ensure_utc(session_data.Acct_Update_Time)
+            session_copy.Acct_Update_Time = _ensure_utc(session_copy.Acct_Update_Time)
 
         # Приводим Acct_Start_Time к UTC если он есть
-        if session_data.Acct_Start_Time:
-            session_data.Acct_Start_Time = _ensure_utc(session_data.Acct_Start_Time)
+        if session_copy.Acct_Start_Time:
+            session_copy.Acct_Start_Time = _ensure_utc(session_copy.Acct_Start_Time)
 
         # Обрабатываем Acct_Stop_Time
         if stoptime:
-            if not session_data.Acct_Stop_Time:
-                session_data.Acct_Stop_Time = (
-                    session_data.Event_Timestamp or datetime.now(tz=_UTC_TZ)
+            if not session_copy.Acct_Stop_Time:
+                session_copy.Acct_Stop_Time = (
+                    session_copy.Event_Timestamp or datetime.now(tz=_UTC_TZ)
                 )
-            session_data.Acct_Stop_Time = _ensure_utc(session_data.Acct_Stop_Time)
-            # logger.debug(
-            #     "Сессия будет остановлена: %s", session_data.Acct_Unique_Session_Id
-            # )
+            session_copy.Acct_Stop_Time = _ensure_utc(session_copy.Acct_Stop_Time)
         else:
             # Активная сессия, не заполняем Stop-Time
-            # logger.debug("Активная сессия, Acct-Stop-Time будет пустым")
-            session_data.Acct_Stop_Time = None
+            session_copy.Acct_Stop_Time = None
 
-        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_data)
+        result = await rmq_send_message(AMQP_SESSION_QUEUE, session_copy)
         if result:
             logger.info(
                 "Сессия отправлена в очередь session_queue: %s",
-                session_data.Acct_Unique_Session_Id,
+                session_copy.Acct_Unique_Session_Id,
             )
         return result
     except Exception as e:
@@ -82,7 +93,7 @@ async def send_to_session_queue(
             session_data.Acct_Unique_Session_Id,
             e,
         )
-        raise
+        return False
 
 
 async def send_to_traffic_queue(
@@ -91,17 +102,14 @@ async def send_to_traffic_queue(
     """Отправка данных трафика в RabbitMQ очередь для сохранения"""
 
     try:
-        # Определяем поля трафика и их алиасы (выносим в константу)
-        TRAFFIC_FIELDS = [
-            ("Acct_Input_Octets", "Acct-Input-Octets"),
-            ("Acct_Output_Octets", "Acct-Output-Octets"),
-            ("Acct_Input_Packets", "Acct-Input-Packets"),
-            ("Acct_Output_Packets", "Acct-Output-Packets"),
-            ("ERX_IPv6_Acct_Input_Octets", "ERX-IPv6-Acct-Input-Octets"),
-            ("ERX_IPv6_Acct_Output_Octets", "ERX-IPv6-Acct-Output-Octets"),
-            ("ERX_IPv6_Acct_Input_Packets", "ERX-IPv6-Acct-Input-Packets"),
-            ("ERX_IPv6_Acct_Output_Packets", "ERX-IPv6-Acct-Output-Packets"),
-        ]
+        # Валидация входных данных
+        if not session_new:
+            logger.error("session_new не может быть None")
+            return False
+        
+        if not session_new.Acct_Unique_Session_Id:
+            logger.error("Acct_Unique_Session_Id обязателен")
+            return False
 
         # Базовые данные с алиасами
         traffic_data: Dict[str, Any] = {
@@ -112,9 +120,6 @@ async def send_to_traffic_queue(
 
         # Если есть старая сессия, вычисляем дельту
         if session_stored:
-            # logger.debug(
-            #     "Вычисление дельты трафика для %s", session_new.Acct_Unique_Session_Id
-            # )
             negative_deltas = []
 
             for field, alias in TRAFFIC_FIELDS:
@@ -174,8 +179,16 @@ async def send_to_traffic_queue(
 
 async def send_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
     """Отправка лога авторизации в RabbitMQ очередь"""
-    # logger.debug("Сохранение лога авторизации: %s", auth_data.username)
     try:
+        # Валидация входных данных
+        if not auth_data:
+            logger.error("auth_data не может быть None")
+            return False
+            
+        if not auth_data.username:
+            logger.error("username обязателен для лога авторизации")
+            return False
+            
         result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)
         if result:
             logger.info("Лог авторизации отправлен в очередь: %s", auth_data.username)

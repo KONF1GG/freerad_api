@@ -5,6 +5,8 @@ import logging
 from typing import Optional
 from pydantic import ValidationError
 
+from radius_core.config.settings import RADIUS_LOGIN_PREFIX
+
 from ...models import SessionData
 from ...clients import execute_redis_command, execute_redis_pipeline
 from ...core.metrics import track_function
@@ -18,16 +20,11 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
     Получение сессии из Redis и преобразование в модель RedisSessionData.
     """
     try:
-#        logger.debug("Getting session from Redis key: %s", redis_key)
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
-#        logger.debug("JSON.GET result for key %s: %s", redis_key, session_data)
         if not session_data:
-#            logger.debug("No session data found for key: %s", redis_key)
             return None
 
-        # JSON.GET уже возвращает Python объект, не нужно парсить
         session = SessionData(**session_data)
-#        logger.debug("Successfully retrieved session for key: %s", redis_key)
         return session
 
     except json.JSONDecodeError as e:
@@ -53,7 +50,6 @@ async def save_session_to_redis(
             ("EXPIRE", redis_key, 1800),  # TTL на 30 минут
         ]
         await execute_redis_pipeline(commands, redis_conn=redis)
-#        logger.debug("Session saved to RedisJSON with TTL: %s", redis_key)
         return True
     except Exception as e:
         logger.error("Failed to save session to RedisJSON: %s", e)
@@ -65,8 +61,19 @@ async def delete_session_from_redis(redis_key: str, redis) -> bool:
     """Удаление сессии из Redis"""
     try:
         result = await execute_redis_command(redis, "DEL", redis_key)
-#        logger.debug("Session deleted from Redis: %s, result: %s", redis_key, result)
         return result > 0
     except Exception as e:
         logger.error("Failed to delete session from Redis: %s", e)
+        return False
+
+
+@track_function("redis", "check_login_exists")
+async def _check_login_exists_in_redis(login: str, redis) -> bool:
+    """Проверяет существование логина в Redis по ключу login:login"""
+    try:
+        login_key = f"{RADIUS_LOGIN_PREFIX}{login}"
+        result = await execute_redis_command(redis, "EXISTS", login_key)
+        return bool(result)
+    except Exception as e:
+        logger.error("Ошибка при проверке существования логина %s: %s", login, e)
         return False

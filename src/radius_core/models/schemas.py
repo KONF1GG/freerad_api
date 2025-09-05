@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
@@ -104,7 +104,8 @@ class BaseAccountingData(BaseModel):
 
         # Если dict с ключом 'value' — берём первый элемент
         if isinstance(value, dict):
-            value = value.get("value", [0])[0]
+            value_list = value.get("value", [0])
+            value = value_list[0] if value_list else 0
 
         # Если строка — пробуем int()
         if isinstance(value, str):

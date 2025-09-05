@@ -30,9 +30,6 @@ async def enrich_session_with_login(
     if login:
         session_dict.update(login.model_dump(by_alias=True))
 
-    # if session_dict.get("ERX-Service-Session"):
-    #     session_dict["service"] = session_dict["ERX-Service-Session"]
-
     try:
         return EnrichedSessionData(**session_dict)
     except ValidationError as e:
