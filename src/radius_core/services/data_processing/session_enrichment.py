@@ -1,8 +1,10 @@
 """Обогащение данных сессии информацией о логине."""
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 from pydantic import ValidationError
+
+from radius_core.models.schemas import VideoLoginSearchResult
 
 from ...models import AccountingData, EnrichedSessionData, LoginSearchResult
 
@@ -10,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 async def enrich_session_with_login(
-    session_req: AccountingData, login: Optional[LoginSearchResult]
+    session_req: AccountingData,
+    login: Optional[Union[LoginSearchResult, VideoLoginSearchResult]],
 ) -> EnrichedSessionData:
     """
     Обогащение данных сессии информацией о логине.

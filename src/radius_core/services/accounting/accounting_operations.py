@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from fastapi import HTTPException
 
-from radius_core.models.schemas import EnrichedSessionData, LoginSearchResult
+from radius_core.models.schemas import (
+    EnrichedSessionData,
+    LoginSearchResult,
+    VideoLoginSearchResult,
+)
 
 from ...config import RADIUS_SESSION_PREFIX, RADIUS_LOGIN_PREFIX
 from ..storage.queue_operations import (
@@ -82,10 +86,11 @@ async def process_accounting(
 
         if login and login.auth_type == "VIDEO":
             # Получаем логин камеры из Redis
-            camera_login = await get_camera_login_from_redis(login, redis)
+            camera_login: VideoLoginSearchResult = await get_camera_login_from_redis(
+                login, redis
+            )
             if camera_login:
-                # Обновляем login в объекте login
-                session_req.login = camera_login
+                login.login = camera_login
 
         # Добавляем данные логина в данные сессии
         session_req = await enrich_session_with_login(session_req, login)
