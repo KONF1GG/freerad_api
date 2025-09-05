@@ -273,7 +273,7 @@ async def _handle_session_closure_conditions(
         if login and session_stored:
             try:
                 correction_result = await check_and_correct_service_state(
-                    session_stored, login, login.login
+                    session_stored, login, login.login, rabbitmq
                 )
                 if correction_result:
                     logger.info(
