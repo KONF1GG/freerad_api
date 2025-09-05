@@ -284,7 +284,8 @@ async def _handle_session_closure_conditions(
                 )
                 if correction_result:
                     logger.info(
-                        "Выполнена коррекция сервисов для сессии %s: %s",
+                        "Выполнена коррекция сервисов для сессии %s - %s: %s",
+                        login.login,
                         session_unique_id,
                         correction_result,
                     )

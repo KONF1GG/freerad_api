@@ -237,14 +237,14 @@ async def send_coa_session_set(
             logger.info(
                 "CoA команда на обновление сессии отправлена в очередь: %s, "
                 "атрибуты: %s",
-                data_for_coa.get("Acct_Session_Id", "unknown"),
+                data_for_coa.get("Acct-Session-Id", "unknown"),
                 attributes,
             )
         else:
             logger.warning(
                 "CoA команда на обновление сессии не была отправлена в очередь: %s, "
                 "атрибуты: %s",
-                data_for_coa.get("Acct_Session_Id", "unknown"),
+                data_for_coa.get("Acct-Session-Id", "unknown"),
                 attributes,
             )
 
