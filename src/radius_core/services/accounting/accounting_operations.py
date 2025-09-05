@@ -136,6 +136,7 @@ async def process_accounting(
                 event_time,
                 session_unique_id,
                 login,
+                is_service_session,
             )
             if result:
                 return result
@@ -196,6 +197,7 @@ async def _handle_session_closure_conditions(
     event_time: datetime,
     session_unique_id: str,
     login: LoginSearchResult | None = None,
+    is_service_session: bool = False,
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
     stored_login = session_stored.login
@@ -270,7 +272,7 @@ async def _handle_session_closure_conditions(
         )
     else:
         # Сессия нормальная, проверяем состояние сервисов
-        if login and session_stored:
+        if login and session_stored and is_service_session:
             try:
                 correction_result = await check_and_correct_service_state(
                     session_stored, login, login.login, rabbitmq
