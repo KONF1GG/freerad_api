@@ -119,6 +119,7 @@ async def process_accounting(
             login
             and is_service_session
             and session_req.Acct_Status_Type == "Interim-Update"
+            and login.auth_type != "VIDEO"
         ):
             try:
                 correction_result = await check_and_correct_service_state(
