@@ -44,7 +44,6 @@ async def search_redis(
         Optional[LoginSearchResult]: Результат поиска или None в случае ошибки.
     """
     try:
-
         if key_type == "FT.SEARCH":
             try:
                 result = await execute_redis_command(redis, "FT.SEARCH", index, query)
@@ -154,7 +153,6 @@ async def find_login_by_session(
             logger.warning("Missing User-Name in session")
             return None
 
-
         if is_mac_username(username):
             mac = mac_from_username(username).replace(":", r"\:")
 
@@ -225,7 +223,7 @@ async def find_sessions_by_login(
     query_parts = []
 
     # 1. Поиск по логину
-    # Экранируем специальные символы в login
+    # Экранируем специальные символы в login для RedisSearch
     escaped_login = login.replace("-", "\\-").replace(":", "\\:").replace(".", "\\.")
     query_parts.append(f"@login:{{{escaped_login}}}")
 
@@ -236,7 +234,7 @@ async def find_sessions_by_login(
             escaped_onu_mac = login_data.onu_mac.replace(":", r"\:")
             query_parts.append(f"@onu_mac:{{{escaped_onu_mac}}}")
 
-        # 3. Поиск по mac+vlan
+        # 3. Поиск по mac+vlan (User_Name + NAS_Port)
         if (
             hasattr(login_data, "mac")
             and login_data.mac
@@ -246,16 +244,23 @@ async def find_sessions_by_login(
             # Преобразуем MAC в формат User-Name (xx:xx:xx:xx:xx:xx -> xxxx.xxxx.xxxx)
             user_name_format = username_from_mac(login_data.mac)
             if user_name_format:
-                escaped_user_name = user_name_format.replace(".", r"\\.")
+                # Правильное экранирование точек для RedisSearch
+                escaped_user_name = user_name_format.replace(".", r"\.")
                 query_parts.append(
-                    f"(@User\\-Name:{{{escaped_user_name}}} @NAS\\-Port:{{{login_data.vlan}}})"
+                    f"(@User_Name:{{{escaped_user_name}}} @NAS_Port:{{{login_data.vlan}}})"
                 )
 
     # Объединяем все части запроса через OR
-    query = " | ".join(f"({part})" for part in query_parts)
+    if len(query_parts) == 1:
+        query = query_parts[0]
+    else:
+        query = " | ".join(query_parts)
+
     # Исключаем VIDEO сессии
     query = f"({query}) -@auth_type:{{VIDEO}}"
     index = "idx:radius:session"
+
+    logger.debug("Executing FT.SEARCH query: %s on index: %s", query, index)
 
     try:
         result = await execute_redis_command(
@@ -263,11 +268,12 @@ async def find_sessions_by_login(
         )
 
         if not result or result[0] == 0:
+            logger.debug("No sessions found for login: %s", login)
             return []
 
-        sessions = []  # Результат: [count, key, fields] для одного документа
-        # Для нескольких: [count, key1, fields1, key2, fields2, ...]
+        sessions = []
         num_results = result[0]
+        logger.debug("Found %d sessions for login: %s", num_results, login)
 
         for i in range(num_results):
             # Индекс полей: 2 + i*2
