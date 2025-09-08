@@ -293,7 +293,7 @@ def _prepare_session_data(
         if not is_service_session and "ERX-Service-Session" in session_req_dict:
             session_req_dict.pop("ERX-Service-Session")
 
-        if old_login != session_req.login:
+        if session_req.Acct_Status_Type == "Stop" and old_login != session_req.login:
             # logger.debug(
             #     "Логин изменился с %s на %s в STOP пакете - взяли старый логин %s",
             #     old_login,

@@ -253,6 +253,8 @@ async def find_sessions_by_login(
 
     # Объединяем все части запроса через OR
     query = " | ".join(f"({part})" for part in query_parts)
+    # Исключаем VIDEO сессии
+    query = f"({query}) -@auth_type:{{VIDEO}}"
     index = "idx:radius:session"
 
     try:
