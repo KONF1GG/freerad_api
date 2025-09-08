@@ -104,9 +104,6 @@ async def search_redis(
         if auth_type == "VIDEO":
             if redis_key:
                 parsed_data["key"] = redis_key
-            # Для видеокамер используем host как login, если login не задан
-            if "login" not in parsed_data or not parsed_data["login"]:
-                parsed_data["login"] = parsed_data.get("host", "")
 
         # Создаем модель в зависимости от типа
         if auth_type == "VIDEO":
