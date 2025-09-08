@@ -250,6 +250,15 @@ async def _check_login_services(key: str, redis, channel=None):
     login_mismatch_found = False
     session_mismatches = []  # Для детального описания расхождений
 
+    # Логируем id сессии и её тип через запятую
+    session_info = [
+        f"{getattr(s, 'Acct_Unique_Session_Id', 'NO_ID')}:{getattr(s, 'auth_type', 'UNKNOWN')}"
+        for s in sessions
+    ]
+    logger.info(
+        "Сессии для логина %s: %s", login_name, ", ".join(session_info)
+    )
+
     for session in sessions:
         # Извлекаем данные из сессии
         session_onu_mac = session.onu_mac
