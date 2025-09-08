@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from fastapi import HTTPException
 
+from radius_core.services.monitoring.service_checker import (
+    check_and_correct_service_state,
+)
+
 from ...models.schemas import (
     EnrichedSessionData,
     LoginSearchResult,
@@ -28,7 +32,6 @@ from ..storage.search_operations import (
     find_login_by_session,
     get_camera_login_from_redis,
 )
-from ..monitoring.service_checker import check_and_correct_service_state
 
 from ..data_processing import (
     enrich_session_with_login,
@@ -108,10 +111,33 @@ async def process_accounting(
                 event_time,
                 session_unique_id,
                 login,
-                is_service_session,
             )
             if result:
                 return result
+        # Проверка состояния сервисов для сервисных сессий update
+        if (
+            login
+            and is_service_session
+            and session_req.Acct_Status_Type == "Interim-Update"
+        ):
+            try:
+                correction_result = await check_and_correct_service_state(
+                    session_req, login, login.login, rabbitmq
+                )
+                if correction_result:
+                    logger.info(
+                        "Выполнена коррекция сервисов для сессии %s - %s: %s",
+                        login.login,
+                        session_unique_id,
+                        correction_result,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Ошибка при проверке состояния сервисов для сессии %s: %s",
+                    session_unique_id,
+                    e,
+                    exc_info=True,
+                )
 
         # Создаем или обновляем сессию
         session_new = _prepare_session_data(
@@ -169,7 +195,6 @@ async def _handle_session_closure_conditions(
     event_time: datetime,
     session_unique_id: str,
     login: LoginSearchResult | None = None,
-    is_service_session: bool = False,
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
     stored_login = session_stored.login if session_stored else None
@@ -248,32 +273,7 @@ async def _handle_session_closure_conditions(
             reason="session UNAUTH closed (now authorized)",
         )
     else:
-        # Сессия нормальная, проверяем состояние сервисов
-        if (
-            login
-            and is_service_session
-            and session_req.Acct_Status_Type == "Interim-Update"
-        ):
-            try:
-                correction_result = await check_and_correct_service_state(
-                    session_req, login, login.login, rabbitmq
-                )
-                if correction_result:
-                    logger.info(
-                        "Выполнена коррекция сервисов для сессии %s - %s: %s",
-                        login.login,
-                        session_unique_id,
-                        correction_result,
-                    )
-            except Exception as e:
-                logger.error(
-                    "Ошибка при проверке состояния сервисов для сессии %s: %s",
-                    session_unique_id,
-                    e,
-                    exc_info=True,
-                )
-
-    return None
+        return None
 
 
 def _prepare_session_data(

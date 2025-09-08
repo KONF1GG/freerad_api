@@ -110,11 +110,6 @@ async def search_redis(
 
         # Создаем модель в зависимости от типа
         if auth_type == "VIDEO":
-            logger.warning(
-                "VIDEO result redis key: %s, data: %s",
-                redis_key or "unknown",
-                parsed_data,
-            )
             login_result = VideoLoginSearchResult(**parsed_data)
         else:
             login_result = LoginSearchResult(**parsed_data)
