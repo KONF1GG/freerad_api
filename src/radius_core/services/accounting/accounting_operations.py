@@ -141,7 +141,7 @@ async def process_accounting(
 
         # Создаем или обновляем сессию
         session_new = _prepare_session_data(
-            session_stored, session_req, is_service_session
+            session_stored, session_req
         )
 
         # Обработка по типу пакета
@@ -279,36 +279,24 @@ async def _handle_session_closure_conditions(
 def _prepare_session_data(
     session_stored: SessionData | None,
     session_req: EnrichedSessionData,
-    is_service_session: bool,
 ) -> SessionData:
     """Подготавливает данные сессии для обработки"""
     if session_stored:
-        # logger.debug("Обогащение существующей сессии новыми данными")
         session_stored_dict = session_stored.model_dump(by_alias=True)
         session_req_dict = session_req.model_dump(by_alias=True)
 
-        old_login = session_stored_dict.get("login", None)
+        stored_login = session_stored_dict.get("login", None)
+        stored_erx_service_session = session_stored_dict.get("ERX-Service-Session", None)
 
-        # Для несервисных сессий не обновляем ERX_Service_Session
-        if not is_service_session and "ERX-Service-Session" in session_req_dict:
-            session_req_dict.pop("ERX-Service-Session")
+        session_new = session_stored_dict.update(session_req_dict)
 
-        if session_req.Acct_Status_Type == "Stop" and old_login != session_req.login:
-            # logger.debug(
-            #     "Логин изменился с %s на %s в STOP пакете - взяли старый логин %s",
-            #     old_login,
-            #     session_req.login,
-            #     session_req.Acct_Unique_Session_Id,
-            # )
-            session_req_dict.pop("login")
-
-        session_stored_dict.update(session_req_dict)
-        return SessionData(**session_stored_dict)
+        if session_req.Acct_Status_Type == "Stop" and stored_login != session_req.login:
+            session_new["login"] = stored_login
+        
+        session_new["ERX-Service-Session"] = stored_erx_service_session
+        return SessionData(**session_new)
     else:
-        # logger.debug("Создание новой сессии из входящих данных")
         session_req_dict = session_req.model_dump(by_alias=True)
-        if not is_service_session and "ERX-Service-Session" in session_req_dict:
-            session_req_dict.pop("ERX-Service-Session")
         return SessionData(**session_req_dict)
 
 
