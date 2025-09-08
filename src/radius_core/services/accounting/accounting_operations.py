@@ -288,13 +288,13 @@ def _prepare_session_data(
         stored_login = session_stored_dict.get("login", None)
         stored_erx_service_session = session_stored_dict.get("ERX-Service-Session", None)
 
-        session_new = session_stored_dict.update(session_req_dict)
+        session_stored_dict.update(session_req_dict)
 
         if session_req.Acct_Status_Type == "Stop" and stored_login != session_req.login:
-            session_new["login"] = stored_login
+            session_stored_dict["login"] = stored_login
         
-        session_new["ERX-Service-Session"] = stored_erx_service_session
-        return SessionData(**session_new)
+        session_stored_dict["ERX-Service-Session"] = stored_erx_service_session
+        return SessionData(**session_stored_dict)
     else:
         session_req_dict = session_req.model_dump(by_alias=True)
         return SessionData(**session_req_dict)
