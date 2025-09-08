@@ -10,7 +10,7 @@
 from ast import Dict
 import os
 import logging
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
