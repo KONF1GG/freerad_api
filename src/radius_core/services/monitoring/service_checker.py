@@ -69,6 +69,11 @@ async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[Dict[str, Any]]:
     """Проверить и скорректировать состояние сервиса"""
+    logger.info(
+        "Проверка и корректировка состояния сервиса для сессии %s (%s)",
+        session.Acct_Unique_Session_Id,
+        session.Acct_Status_Type,
+    )
 
     if not session.ERX_Service_Session:
         return None
