@@ -180,15 +180,6 @@ async def send_to_traffic_queue(
 async def send_auth_log_to_queue(auth_data: AuthDataLog) -> bool:
     """Отправка лога авторизации в RabbitMQ очередь"""
     try:
-        # Валидация входных данных
-        if not auth_data:
-            logger.error("auth_data не может быть None")
-            return False
-
-        if not auth_data.username:
-            logger.error("username обязателен для лога авторизации")
-            return False
-
         result = await rmq_send_message(AMQP_AUTH_LOG_QUEUE, auth_data)
         if result:
             logger.info("Лог авторизации отправлен в очередь: %s", auth_data.username)
