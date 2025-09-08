@@ -224,15 +224,15 @@ async def find_sessions_by_login(
 
     # 1. Поиск по логину
     # Экранируем специальные символы в login для RedisSearch
-    escaped_login = login.replace("-", "\\-").replace(":", "\\:").replace(".", "\\.")
-    query_parts.append(f"@login:{{{escaped_login}}}")
+    escaped_login = login.replace("-", "\-").replace(":", "\:").replace(".", "\.")
+    query_parts.append(f"(@login:{{{escaped_login}}})")
 
     # Если переданы данные логина, добавляем дополнительные критерии поиска
     if login_data:
         # 2. Поиск по onu_mac
         if hasattr(login_data, "onu_mac") and login_data.onu_mac:
             escaped_onu_mac = login_data.onu_mac.replace(":", r"\:")
-            query_parts.append(f"@onu_mac:{{{escaped_onu_mac}}}")
+            query_parts.append(f"(@onu_mac:{{{escaped_onu_mac}}})")
 
         # 3. Поиск по mac+vlan (User_Name + NAS_Port)
         if (
@@ -257,7 +257,7 @@ async def find_sessions_by_login(
         query = " | ".join(query_parts)
 
     # Исключаем VIDEO сессии
-    query = f"({query}) -@auth_type:{{VIDEO}}"
+    query = f"(({query}) -@auth_type:{{VIDEO}})"
     index = "idx:radius:session"
 
     logger.debug("Executing FT.SEARCH query: %s on index: %s", query, index)

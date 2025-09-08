@@ -7,9 +7,11 @@
 - Основные RADIUS эндпоинты
 """
 
+from ast import Dict
 import os
 import logging
-from typing import Dict, Any
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from ..models.schemas import (
