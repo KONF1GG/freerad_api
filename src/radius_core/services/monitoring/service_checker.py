@@ -105,7 +105,10 @@ async def check_and_correct_service_state(
                 }
                 reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_kb}k"
                 logger.info(
-                    "Отправка CoA на обновление скорости для логина %s", login_name
+                    "CoA SET: разблокировка сервиса для сессии %s (%s), атрибуты: %s",
+                    session.Acct_Unique_Session_Id,
+                    login_name,
+                    coa_attributes,
                 )
                 await send_coa_session_set(
                     session, channel, coa_attributes, reason=reason
@@ -130,8 +133,13 @@ async def check_and_correct_service_state(
             "ERX-Service-Activate:1": "NOINET-NOMONEY()",
             "ERX-Service-Deactivate": "INET-FREEDOM",
         }
+        logger.info(
+            "CoA SET: блокировка сервиса для сессии %s (%s), атрибуты: %s",
+            session.Acct_Unique_Session_Id,
+            login_name,
+            coa_attributes,
+        )
         await send_coa_session_set(session, channel, coa_attributes, reason=reason)
-        logger.info("Отправка CoA на убийство сессии для логина %s", login_name)
         return {
             "action": "kill",
             "reason": "service expired",
@@ -159,12 +167,14 @@ async def check_and_correct_service_state(
                             "ERX-Service-Deactivate": "INET-FREEDOM",
                         }
                         reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
+                        logger.info(
+                            "CoA SET: обновление скорости для сессии %s (%s), атрибуты: %s",
+                            session.Acct_Unique_Session_Id,
+                            login_name,
+                            coa_attributes,
+                        )
                         await send_coa_session_set(
                             session, channel, coa_attributes, reason=reason
-                        )
-                        logger.info(
-                            "Отправка CoA на обновление скорости для логина %s",
-                            login_name,
                         )
                         return {
                             "action": "update",
@@ -255,9 +265,7 @@ async def _check_login_services(key: str, redis, channel=None):
         f"{getattr(s, 'Acct_Unique_Session_Id', 'NO_ID')}:{getattr(s, 'auth_type', 'UNKNOWN')}"
         for s in sessions
     ]
-    logger.info(
-        "Сессии для логина %s: %s", login_name, ", ".join(session_info)
-    )
+    logger.info("Сессии для логина %s: %s", login_name, ", ".join(session_info))
 
     for session in sessions:
         # Извлекаем данные из сессии
@@ -344,6 +352,12 @@ async def _check_login_services(key: str, redis, channel=None):
         # Отправляем CoA kill для всех сессий
         kill_tasks = []
         for session in sessions:
+            logger.info(
+                "CoA KILL: убийство сессии %s (%s), причина: %s",
+                session.Acct_Unique_Session_Id,
+                login_name,
+                detailed_reason,
+            )
             kill_tasks.append(
                 send_coa_session_kill(
                     session,
