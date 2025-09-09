@@ -80,7 +80,7 @@ def username_from_mac(mac: str) -> str:
         return ""
 
     # Убираем двоеточия и приводим к нижнему регистру
-    mac_clean = mac.replace(":", "").replace("-", "").lower()
+    mac_clean = mac.replace(":", "").replace("-", "").replace(".", "").lower()
 
     # Проверяем, что MAC-адрес содержит 12 символов
     if len(mac_clean) != 12:
