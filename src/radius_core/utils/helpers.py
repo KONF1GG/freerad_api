@@ -4,7 +4,7 @@
 
 import re
 import logging
-from typing import Dict, Any, Tuple, Union
+from typing import Dict, Tuple
 from datetime import datetime, timezone
 from dateutil import parser
 
@@ -100,6 +100,7 @@ PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
     "0x485754433641": (10, "70:A5:{}", ":", True),
     "0x485754434136": (10, "80:F7:{}", ":", True),
     "0x485754433144": (10, "50:5B:{}", ":", True),
+    "0x485754434146": (10, "D0:5F:{}", ":", True),
     "0x34383537353434333641": (18, "70:A5:{}", ":", True),
     "0x34383537353434334136": (18, "80:F7:{}", ":", True),
     "0x34383537353434333144": (18, "50:5B:{}", ":", True),
