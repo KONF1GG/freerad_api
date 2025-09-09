@@ -225,7 +225,8 @@ async def find_sessions_by_login(
     # 1. Поиск по логину
     # Экранируем специальные символы в login для RedisSearch
     escaped_login = login.replace("-", r"\-").replace(":", r"\:").replace(".", r"\.")
-    query_parts.append(f"(@login:{{{escaped_login}}})")
+    if login:
+        query_parts.append(f"(@login:{{{escaped_login}}})")
 
     # Если переданы данные логина, добавляем дополнительные критерии поиска
     if login_data:
@@ -257,7 +258,7 @@ async def find_sessions_by_login(
         query = " | ".join(query_parts)
 
     # Исключаем VIDEO сессии
-    query = f"(({query}) -@auth_type:{{VIDEO}})"
+    query = f"({query} -@auth_type:{{VIDEO}})"
     index = "idx:radius:session"
 
     logger.info("Executing FT.SEARCH query: %s on index: %s", query, index)
