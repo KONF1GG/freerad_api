@@ -245,6 +245,7 @@ async def _check_login_services(key: str, redis, channel=None):
             }
 
         # Теперь ищем сессии, используя данные логина
+        logger.info("Ищем сессии для логина %s, данные логина: %s", login_name, login_data.model_dump() if hasattr(login_data, "json") else str(login_data))
         sessions = await find_sessions_by_login(login_name, redis, login_data)
         logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
     except Exception as e:
