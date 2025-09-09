@@ -17,7 +17,6 @@ from ...models import SessionData, LoginSearchResult
 from ...models.schemas import CorrectRequest, ServiceCheckResponse
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
 from .service_utils import check_service_expiry
-from ...utils import is_mac_username, mac_from_username
 
 logger = logging.getLogger(__name__)
 
@@ -244,10 +243,11 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
         )
         if not login_data:
             logger.warning("Данные логина %s не найдены в Redis", login_name)
-            return {
-                "status": "error",
-                "message": f"Login data not found for {login_name}",
-            }
+            return ServiceCheckResponse(
+                action="error",
+                reason=f"Login data not found for {login_name}",
+                status="error",
+            )
 
         # Теперь ищем сессии, используя данные логина
         logger.info(
@@ -259,14 +259,19 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
         logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
     except Exception as e:
         logger.error("Ошибка получения данных для %s: %s", login_name, e)
-        return {
-            "status": "error",
-            "message": f"Error getting data for {login_name}: {str(e)}",
-        }
+        return ServiceCheckResponse(
+            action="error",
+            reason=f"Error getting data for {login_name}: {str(e)}",
+            status="error",
+        )
 
     if not sessions:
         logger.info("Нет сессий для проверки логина %s", login_name)
-        return {"status": "checked", "message": f"No sessions found for {login_name}"}
+        return ServiceCheckResponse(
+            action="noop",
+            reason=f"No sessions found for {login_name}",
+            status="checked",
+        )
 
     # Логируем id сессии и её тип через запятую
     session_info = [
@@ -328,10 +333,11 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
                 "CoA kill команды успешно отправлены для всех %s сессий", len(sessions)
             )
 
-        return {
-            "status": "killed",
-            "message": f"Killed {len(sessions)} sessions due to fields change: {detailed_reason}",
-        }
+        return ServiceCheckResponse(
+            action="kill",
+            reason=f"Killed {len(sessions)} sessions due to fields change: {detailed_reason}",
+            status="killed",
+        )
 
     # Если fields_changed=False - проверяем только логин
     login_mismatch_found = False
@@ -376,10 +382,11 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
         logger.info(
             "Логин изменился, но fields_changed=False - это неожиданная ситуация"
         )
-        return {
-            "status": "error",
-            "message": "Login mismatch found but fields_changed=False",
-        }
+        return ServiceCheckResponse(
+            action="error",
+            reason="Login mismatch found but fields_changed=False",
+            status="error",
+        )
 
 
 # async def _check_device_services(key: str, redis, channel=None):
