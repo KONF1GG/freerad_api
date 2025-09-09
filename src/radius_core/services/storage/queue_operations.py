@@ -114,7 +114,7 @@ async def send_to_traffic_queue(
         # Базовые данные с алиасами
         traffic_data: Dict[str, Any] = {
             "Acct-Unique-Session-Id": session_new.Acct_Unique_Session_Id,
-            "login": session_new.login,
+            "login": session_new.login if session_new.login else "",
             "timestamp": now_str(),
         }
 
