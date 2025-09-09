@@ -45,8 +45,8 @@ async def update_main_session_service(
         # Поиск основной сессии по полю Acct-Session-Id в индексе
         index = RADIUS_INDEX_NAME_SESSION
         # Экранируем специальные символы в main_session_id
-        escaped_session_id = main_session_id.replace("-", "\\-").replace(":", "\\:")
-        query = f"@Acct\\-Session\\-Id:{{{escaped_session_id}}}"
+        escaped_session_id = main_session_id.replace("-", r"\-").replace(":", r"\:")
+        query = f"(@Acct_Session_Id:{{{escaped_session_id}}})"
         # Получаем основную сессию из Redis
         result = await execute_redis_command(redis, "FT.SEARCH", index, query)
 
