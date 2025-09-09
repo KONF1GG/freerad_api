@@ -270,7 +270,7 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
         return ServiceCheckResponse(
             action="noop",
             reason=f"No sessions found for {login_name}",
-            status="checked",
+            status="success",
         )
 
     # Логируем id сессии и её тип через запятую
@@ -336,7 +336,7 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
         return ServiceCheckResponse(
             action="kill",
             reason=f"Killed {len(sessions)} sessions due to fields change: {detailed_reason}",
-            status="killed",
+            status="success",
         )
 
     # Если fields_changed=False - проверяем только логин
