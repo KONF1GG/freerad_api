@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
@@ -73,6 +73,7 @@ class BaseAccountingData(BaseModel):
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
     @field_validator("Event_Timestamp", mode="before")
+    @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
@@ -96,6 +97,7 @@ class BaseAccountingData(BaseModel):
         "ERX_IPv6_Acct_Output_Octets",
         mode="before",
     )
+    @classmethod
     def safe_int(cls: type, value: Any, info: ValidationInfo) -> int:
         """Безопасное преобразование в int из любого типа."""
         # Если None или пустая строка — 0
@@ -137,6 +139,7 @@ class BaseAccountingData(BaseModel):
 
 class AccountingData(BaseAccountingData):
     """Модель для данных учета."""
+
 
 class BaseResponse(BaseModel):
     """Базовая модель для ответа."""
@@ -234,6 +237,7 @@ class VideoLoginSearchResult(VideoDeviceInfo):
     auth_type: Optional[str] = Field(default="VIDEO", description="Тип аутентификации")
 
     @field_validator("nodeId", mode="before")
+    @classmethod
     def parse_node_id(cls: type, value: Any) -> Optional[int]:
         """Парсит nodeId, обрабатывая пустые строки как None."""
         if value is None or value == "":
@@ -280,6 +284,7 @@ class TrafficData(BaseModel):
         "ERX_IPv6_Acct_Output_Packets",
         mode="before",
     )
+    @classmethod
     def ensure_non_negative(cls: type, value: Any) -> int:
         """Гарантирует, что значения трафика не отрицательные."""
         if value is None:
@@ -334,6 +339,7 @@ class AuthRequest(BaseModel):
     )
 
     @field_validator("Event_Timestamp", mode="before")
+    @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
@@ -393,6 +399,25 @@ class AuthResponse(BaseModel):
     def to_radius(self) -> Dict[str, Any]:
         """Преобразовать в словарь для отправки в RADIUS"""
         return self.model_dump(by_alias=True, exclude_none=True)
+
+
+class SessionsSearchRequest(BaseModel):
+    """Модель для запроса поиска сессий по логину"""
+
+    login: str = Field('', description="Логин для поиска сессий")
+    onu_mac: str = Field('', description="MAC-адрес ONU")
+    mac: str = Field('', description="MAC-адрес устройства")
+    vlan: str = Field('', description="VLAN")
+
+
+class SessionsSearchResponse(BaseModel):
+    """Модель для ответа с результатами поиска сессий"""
+
+    sessions: List[SessionData] = Field(
+        default_factory=list, description="Найденные сессии"
+    )
+    total_count: int = Field(0, description="Общее количество найденных сессий")
+    login: str = Field(..., description="Логин, по которому выполнялся поиск")
 
 
 RABBIT_MODELS = TrafficData | SessionData | AuthDataLog

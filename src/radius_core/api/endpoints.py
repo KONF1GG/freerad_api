@@ -19,8 +19,11 @@ from ..models.schemas import (
     ServiceCheckResponse,
     AuthRequest,
     CorrectRequest,
+    SessionsSearchRequest,
+    SessionsSearchResponse,
 )
 from ..services import auth, check_and_correct_services, process_accounting
+from ..services.storage.search_operations import find_sessions_by_login
 
 from ..clients import redis_health_check, redis_client
 from ..clients import rabbitmq_health_check
@@ -197,6 +200,33 @@ async def do_check_and_correct_services(
         logger.error(
             "Ошибка при обработке запроса CoA для пользователя %s: %s",
             data.key,
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/sessions/search/", response_model=SessionsSearchResponse)
+@track_function("radius", "search_sessions")
+@track_http_request(method="POST", endpoint="/sessions/search/")
+async def search_sessions_by_login(
+    data: SessionsSearchRequest, redis: RedisDependency
+) -> SessionsSearchResponse:
+    """Поиск сессий по логину пользователя."""
+    logger.info("Поиск сессий для логина: %s", data.login)
+    try:
+        # Вызываем функцию поиска сессий
+        sessions = await find_sessions_by_login(data.login, redis, data)
+
+        logger.info("Найдено %d сессий для логина: %s", len(sessions), data.login)
+
+        return SessionsSearchResponse(
+            sessions=sessions, total_count=len(sessions), login=data.login
+        )
+    except Exception as e:
+        logger.error(
+            "Ошибка при поиске сессий для логина %s: %s",
+            data.login,
             e,
             exc_info=True,
         )

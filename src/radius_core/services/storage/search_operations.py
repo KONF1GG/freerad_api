@@ -224,7 +224,7 @@ async def find_sessions_by_login(
 
     # 1. Поиск по логину
     # Экранируем специальные символы в login для RedisSearch
-    escaped_login = login.replace("-", "\-").replace(":", "\:").replace(".", "\.")
+    escaped_login = login.replace("-", r"\-").replace(":", r"\:").replace(".", r"\.")
     query_parts.append(f"(@login:{{{escaped_login}}})")
 
     # Если переданы данные логина, добавляем дополнительные критерии поиска

@@ -11,6 +11,8 @@ from .schemas import (
     EnrichedSessionData,
     LoginSearchResult,
     VideoLoginSearchResult,
+    SessionsSearchRequest,
+    SessionsSearchResponse,
     RABBIT_MODELS,
 )
 
@@ -25,5 +27,7 @@ __all__ = [
     "EnrichedSessionData",
     "LoginSearchResult",
     "VideoLoginSearchResult",
+    "SessionsSearchRequest",
+    "SessionsSearchResponse",
     "RABBIT_MODELS",
 ]
