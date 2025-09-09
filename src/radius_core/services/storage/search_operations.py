@@ -260,7 +260,7 @@ async def find_sessions_by_login(
     query = f"(({query}) -@auth_type:{{VIDEO}})"
     index = "idx:radius:session"
 
-    logger.debug("Executing FT.SEARCH query: %s on index: %s", query, index)
+    logger.info("Executing FT.SEARCH query: %s on index: %s", query, index)
 
     try:
         result = await execute_redis_command(
