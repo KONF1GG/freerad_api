@@ -14,7 +14,7 @@ from ..storage.search_operations import (
 )
 
 from ...models import SessionData, LoginSearchResult
-from ...models.schemas import ServiceCheckResponse
+from ...models.schemas import CorrectRequest, ServiceCheckResponse
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
 from .service_utils import check_service_expiry
 from ...utils import is_mac_username, mac_from_username
@@ -193,10 +193,11 @@ async def check_and_correct_service_state(
 
 
 async def check_and_correct_services(
-    key: str, redis, channel=None
+    data: CorrectRequest, redis, channel=None
 ) -> ServiceCheckResponse:
     """Проверяет и корректирует сервисы для логина или устройства"""
-
+    key = data.key
+    fields_changed = data.fields_changed
     # Валидация входных данных
     if not key:
         logger.warning("Key is empty")
@@ -207,7 +208,7 @@ async def check_and_correct_services(
         raise HTTPException(status_code=500, detail="Redis client not available")
 
     if key.startswith("login:"):
-        result = await _check_login_services(key, redis, channel)
+        result = await _check_login_services(key, fields_changed, redis, channel)
         return result or ServiceCheckResponse(
             action="noop", reason="No corrections needed", status="success"
         )
@@ -226,10 +227,14 @@ async def check_and_correct_services(
         )
 
 
-async def _check_login_services(key: str, redis, channel=None):
+async def _check_login_services(key: str, fields_changed: bool, redis, channel=None):
     """Проверяет по логину данные в сессиях"""
     login_name = key.split(":", 1)[1]
-    logger.info("Проверка по логину данные в сессиях: %s", login_name)
+    logger.info(
+        "Проверка по логину данные в сессиях: %s, fields_changed: %s",
+        login_name,
+        fields_changed,
+    )
 
     # Сначала получаем данные логина
     login_key = f"{RADIUS_LOGIN_PREFIX}{login_name}"
@@ -245,7 +250,11 @@ async def _check_login_services(key: str, redis, channel=None):
             }
 
         # Теперь ищем сессии, используя данные логина
-        logger.info("Ищем сессии для логина %s, данные логина: %s", login_name, login_data.model_dump() if hasattr(login_data, "json") else str(login_data))
+        logger.info(
+            "Ищем сессии для логина %s, данные логина: %s",
+            login_name,
+            login_data.model_dump() if hasattr(login_data, "json") else str(login_data),
+        )
         sessions = await find_sessions_by_login(login_name, redis, login_data)
         logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
     except Exception as e:
@@ -255,16 +264,9 @@ async def _check_login_services(key: str, redis, channel=None):
             "message": f"Error getting data for {login_name}: {str(e)}",
         }
 
-    logger.info("Найдено %s сессий для логина %s", len(sessions), login_name)
-
     if not sessions:
         logger.info("Нет сессий для проверки логина %s", login_name)
         return {"status": "checked", "message": f"No sessions found for {login_name}"}
-
-    # Проверяем каждую сессию на соответствие данным логина
-    sessions_to_kill = []
-    login_mismatch_found = False
-    session_mismatches = []  # Для детального описания расхождений
 
     # Логируем id сессии и её тип через запятую
     session_info = [
@@ -273,87 +275,15 @@ async def _check_login_services(key: str, redis, channel=None):
     ]
     logger.info("Сессии для логина %s: %s", login_name, ", ".join(session_info))
 
-    for session in sessions:
-        # Извлекаем данные из сессии
-        session_onu_mac = session.onu_mac
-        session_vlan = session.vlan
-
-        # Получаем MAC из User-Name если это MAC-адрес
-        session_mac = None
-        if session.User_Name and is_mac_username(session.User_Name):
-            session_mac = mac_from_username(session.User_Name)
-
-        # Проверяем соответствие полей
-        onu_mac_mismatch = (
-            login_data.onu_mac
-            and session_onu_mac
-            and login_data.onu_mac.upper() != session_onu_mac.upper()
-        )
-
-        mac_mismatch = (
-            login_data.mac
-            and session_mac
-            and login_data.mac.upper() != session_mac.upper()
-        )
-
-        vlan_mismatch = (
-            login_data.vlan
-            and session_vlan
-            and str(login_data.vlan) != str(session_vlan)
-        )
-
-        # Проверяем соответствие логина
-        session_login = session.login
-        if session_login and session_login != login_name:
-            logger.warning(
-                "Несоответствие логина в сессии %s: ожидался %s, получен %s",
-                session.Acct_Unique_Session_Id,
-                login_name,
-                session_login,
-            )
-            login_mismatch_found = True
-
-        # Если есть несоответствия в критических полях - добавляем сессию на убийство
-        if onu_mac_mismatch or mac_mismatch or vlan_mismatch:
-            # Собираем детальное описание расхождений для этой сессии
-            mismatches = []
-            if onu_mac_mismatch:
-                mismatches.append(f"onu_mac:{login_data.onu_mac}≠{session_onu_mac}")
-            if mac_mismatch:
-                mismatches.append(f"mac:{login_data.mac}≠{session_mac}")
-            if vlan_mismatch:
-                mismatches.append(f"vlan:{login_data.vlan}≠{session_vlan}")
-
-            session_mismatch_info = (
-                f"session:{session.Acct_Unique_Session_Id}({','.join(mismatches)})"
-            )
-            session_mismatches.append(session_mismatch_info)
-
-            logger.warning(
-                "Несоответствие данных в сессии %s: onu_mac=%s/%s, mac=%s/%s, vlan=%s/%s",
-                session.Acct_Unique_Session_Id,
-                login_data.onu_mac,
-                session_onu_mac,
-                login_data.mac,
-                session_mac,
-                login_data.vlan,
-                session_vlan,
-            )
-            sessions_to_kill.append(session)
-
-    # Если есть сессии для убийства - убиваем ВСЕ сессии
-    if sessions_to_kill:
+    # Если fields_changed=True - убиваем все сессии
+    if fields_changed:
         logger.info(
-            "Найдены несоответствия в %s сессиях, убиваем все %s сессий для логина %s",
-            len(sessions_to_kill),
+            "Поля логина изменились, убиваем все %s сессий для логина %s",
             len(sessions),
             login_name,
         )
 
-        # Создаем детальное описание всех расхождений
-        detailed_reason = (
-            f"Data mismatch for {login_name}: {'; '.join(session_mismatches)}"
-        )
+        detailed_reason = f"Login fields changed for {login_name}"
 
         # Отправляем CoA kill для всех сессий
         kill_tasks = []
@@ -400,43 +330,56 @@ async def _check_login_services(key: str, redis, channel=None):
 
         return {
             "status": "killed",
-            "message": f"Killed {len(sessions)} sessions due to data mismatch: {detailed_reason}",
+            "message": f"Killed {len(sessions)} sessions due to fields change: {detailed_reason}",
         }
 
-    # Если все данные совпадают - проверяем сервисы для каждой сессии
-    if login_mismatch_found:
-        logger.error(
-            "Обнаружены несоответствия логина, но критические поля совпадают НЕ ДОЛЖНО БЫТЬ ТАКОГО"
+    # Если fields_changed=False - проверяем только логин
+    login_mismatch_found = False
+    for session in sessions:
+        session_login = session.login
+        if session_login and session_login != login_name:
+            logger.warning(
+                "Несоответствие логина в сессии %s: ожидался %s, получен %s",
+                session.Acct_Unique_Session_Id,
+                login_name,
+                session_login,
+            )
+            login_mismatch_found = True
+
+    # Если логин не изменился - проверяем сервисы
+    if not login_mismatch_found:
+        logger.info("Логин не изменился, проверяем сервисы для логина %s", login_name)
+
+        # Проверяем и корректируем состояние сервисов для каждой сессии
+        for session in sessions:
+            try:
+                correction_result = await check_and_correct_service_state(
+                    session, login_data, login_name, channel
+                )
+                if correction_result:
+                    return ServiceCheckResponse(**correction_result)
+            except Exception as e:
+                logger.error(
+                    "Ошибка при проверке сервиса для сессии %s: %s",
+                    session.Acct_Unique_Session_Id,
+                    e,
+                    exc_info=True,
+                )
+
+        # Если дошли до сюда, значит все сервисы корректны
+        return ServiceCheckResponse(
+            action="noop",
+            reason=f"All services checked for {login_name}, no corrections needed",
+            status="success",
+        )
+    else:
+        logger.info(
+            "Логин изменился, но fields_changed=False - это неожиданная ситуация"
         )
         return {
             "status": "error",
-            "message": "Login mismatch found but critical fields match",
+            "message": "Login mismatch found but fields_changed=False",
         }
-
-    logger.info("Данные сессий соответствуют логину %s, проверяем сервисы", login_name)
-
-    # Проверяем и корректируем состояние сервисов для каждой сессии
-    for session in sessions:
-        try:
-            correction_result = await check_and_correct_service_state(
-                session, login_data, login_name, channel
-            )
-            if correction_result:
-                return ServiceCheckResponse(**correction_result)
-        except Exception as e:
-            logger.error(
-                "Ошибка при проверке сервиса для сессии %s: %s",
-                session.Acct_Unique_Session_Id,
-                e,
-                exc_info=True,
-            )
-
-    # Если дошли до сюда, значит все сервисы корректны
-    return ServiceCheckResponse(
-        action="noop",
-        reason=f"All services checked for {login_name}, no corrections needed",
-        status="success",
-    )
 
 
 # async def _check_device_services(key: str, redis, channel=None):

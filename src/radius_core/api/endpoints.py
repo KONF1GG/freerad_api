@@ -191,7 +191,7 @@ async def do_check_and_correct_services(
     """Корректирует услуги при расхождениях"""
     logger.info("Обработка запроса CoA для пользователя: %s", data.key)
     try:
-        result = await check_and_correct_services(data.key, redis, rabbitmq)
+        result = await check_and_correct_services(data, redis, rabbitmq)
         logger.info("Запрос CoA успешно обработан для пользователя: %s", data.key)
         return result
     except HTTPException:

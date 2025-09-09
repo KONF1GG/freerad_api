@@ -298,6 +298,7 @@ class CorrectRequest(BaseModel):
     """Модель запроса CoA"""
 
     key: str
+    fields_changed: bool = Field(default=False, description="True если изменились поля mac vlan или onu_mac")
 
 
 class AuthRequest(BaseModel):
