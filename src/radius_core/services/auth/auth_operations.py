@@ -55,7 +55,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                 asyncio.create_task(
                     _save_auth_log(
                         data,
-                        None,
+                        login,
                         "Access-Reject",
                         f"User not found [{data.User_Name}]",
                     )
@@ -68,7 +68,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             )
             asyncio.create_task(
                 _save_auth_log(
-                    data, None, "Access-Accept", f"User not found [{data.User_Name}]"
+                    data, login, "Access-Accept", f"User not found [{data.User_Name}]"
                 )
             )
             return auth_response.to_radius()
