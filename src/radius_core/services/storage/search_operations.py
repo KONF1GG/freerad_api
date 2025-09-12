@@ -143,17 +143,24 @@ async def find_login_by_session(
         vlan = ""
         onu_mac = ""
 
+        # Переменные для экранированных данных для поиска
+        escaped_mac = ""
+        escaped_vlan = ""
+        escaped_onu_mac = ""
+
         # Извлекаем VLAN
         if nas_port_id:
             nasportid = nasportid_parse(nas_port_id)
             vlan = nasportid.get("cvlan") or nasportid.get("svlan", "")
-            vlan = vlan.replace("-", "\\-").replace(":", "\\:")
+            escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
 
         if username and is_mac_username:
-            mac = mac_from_username(username).replace(":", r"\:")
+            mac = mac_from_username(username)
+            escaped_mac = mac.replace(":", r"\:")
 
         if remote_id:
-            onu_mac = mac_from_hex(remote_id).replace(":", r"\:")
+            onu_mac = mac_from_hex(remote_id)
+            escaped_onu_mac = onu_mac.replace(":", r"\:")
 
         # Проверяем обязательные поля
         if not nas_port_id or not vlan or not username:
@@ -167,13 +174,13 @@ async def find_login_by_session(
 
         if is_mac_username:
             # Поиск логина по mac+vlan
-            search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
+            search_query = f"@mac:{{{escaped_mac}}}@vlan:{{{escaped_vlan}}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
                 return result
 
             # Поиск камеры по MAC
-            search_query = f"@mac:{{{mac}}}"
+            search_query = f"@mac:{{{escaped_mac}}}"
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
             )
@@ -182,7 +189,7 @@ async def find_login_by_session(
 
             # Поиск логина по onu_mac
             if onu_mac:
-                search_query = f"@onu_mac:{{{onu_mac}}}"
+                search_query = f"@onu_mac:{{{escaped_onu_mac}}}"
                 result = await search_redis(redis, search_query, auth_type="OPT82")
                 if result:
                     return result
@@ -192,7 +199,7 @@ async def find_login_by_session(
             if static_match:
                 ip = static_match.groups()[0]
                 escaped_ip = ip.replace(".", "\\.")
-                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
+                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{escaped_vlan}}}"
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
                     return result
