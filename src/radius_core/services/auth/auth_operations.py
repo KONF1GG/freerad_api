@@ -28,7 +28,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
     try:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
 
-        login: LoginSearchResult | VideoLoginSearchResult | None = await find_login_by_session(data, redis)
+        login: LoginSearchResult | VideoLoginSearchResult = await find_login_by_session(
+            data, redis
+        )
         session_limit = 5
 
         auth_response = AuthResponse()  # type: ignore
@@ -293,7 +295,10 @@ def _handle_duplicate_session(auth_response: AuthResponse, login: Any) -> AuthRe
 
 
 async def _save_auth_log(
-    data: AuthRequest, login: LoginSearchResult | VideoLoginSearchResult, reply_code: str, reason: str
+    data: AuthRequest,
+    login: LoginSearchResult | VideoLoginSearchResult,
+    reply_code: str,
+    reason: str,
 ) -> None:
     """Сохраняет лог авторизации"""
     try:
@@ -318,5 +323,9 @@ async def _save_auth_log(
             agentcircuitid=data.ADSL_Agent_Circuit_Id,
         )
         await send_auth_log_to_queue(log_entry)
-    except Exception as log_err:
+    except (ValueError, TypeError, AttributeError) as log_err:
         logger.error("Не удалось записать лог авторизации: %s", log_err, exc_info=True)
+    except Exception as log_err:
+        logger.error(
+            "Неожиданная ошибка при записи лога авторизации: %s", log_err, exc_info=True
+        )

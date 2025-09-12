@@ -124,7 +124,7 @@ async def search_redis(
 async def find_login_by_session(
     session: Any,
     redis,
-) -> Optional[Union[LoginSearchResult, VideoLoginSearchResult]]:
+) -> Union[LoginSearchResult, VideoLoginSearchResult]:
     """
     Args:
         session: Данные сессии (AccountingData).
@@ -139,9 +139,9 @@ async def find_login_by_session(
         remote_id = session.ADSL_Agent_Remote_Id
 
         # Инициализируем переменные
-        mac = ''
-        vlan = ''
-        onu_mac = ''
+        mac = ""
+        vlan = ""
+        onu_mac = ""
 
         # Извлекаем VLAN
         if nas_port_id:
@@ -157,8 +157,12 @@ async def find_login_by_session(
 
         # Проверяем обязательные поля
         if not nas_port_id or not vlan or not username:
-            logger.warning("Missing required fields: nas_port_id=%s, vlan=%s, username=%s", 
-                         nas_port_id, vlan, username)
+            logger.warning(
+                "Missing required fields: nas_port_id=%s, vlan=%s, username=%s",
+                nas_port_id,
+                vlan,
+                username,
+            )
             return LoginSearchResult(mac=mac, vlan=vlan, onu_mac=onu_mac)
 
         if is_mac_username:
@@ -210,7 +214,8 @@ async def find_login_by_session(
 
     except Exception as e:
         logger.error("Critical error in find_login_by_session: %s", e)
-        return None
+        # Возвращаем пустую модель вместо None
+        return LoginSearchResult(mac="", vlan="", onu_mac="")
 
 
 async def find_sessions_by_login(
