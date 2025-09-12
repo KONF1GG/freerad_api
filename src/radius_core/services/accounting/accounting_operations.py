@@ -79,7 +79,7 @@ async def process_accounting(
             find_login_by_session(session_req, redis),
         )
 
-        if login and login.auth_type == "VIDEO":
+        if login.login and login.auth_type == "VIDEO":
             # Получаем логин камеры из Redis
             camera_login = await get_camera_login_from_redis(login, redis)
             if camera_login:
@@ -101,7 +101,7 @@ async def process_accounting(
             await update_main_session_service(session_req, redis)
 
         # Обработка завершения сессии при изменении логина или его отсутствии
-        if packet_type != "Stop" and login and login.auth_type != "VIDEO":
+        if packet_type != "Stop" and login.login and login.auth_type != "VIDEO":
             result = await _handle_session_closure_conditions(
                 redis,
                 rabbitmq,
@@ -116,7 +116,7 @@ async def process_accounting(
                 return result
         # Проверка состояния сервисов для сервисных сессий update
         if (
-            login
+            login.login
             and is_service_session
             and packet_type == "Interim-Update"
             and login.auth_type != "VIDEO"
@@ -197,7 +197,7 @@ async def _handle_session_closure_conditions(
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
     stored_login = session_stored.login if session_stored else None
-    current_login = login.login if login else None
+    current_login = login.login
 
     # 1. Существующая сессия авторизована, а текущая нет
     if session_stored and stored_login and not current_login:

@@ -29,7 +29,7 @@
     - tqdm
     - Доступ к Redis серверу
 """
-
+import os
 import asyncio
 import json
 import logging
@@ -37,12 +37,10 @@ import sys
 from typing import List, Tuple, Any
 import redis.asyncio as redis
 from tqdm import tqdm
-import os
 
 # Импортируем конфигурацию из проекта
 sys.path.append("src")
-from radius_core.config.settings import REDIS_URL, RADIUS_INDEX_NAME
-
+from src.radius_core.config.settings import REDIS_URL, RADIUS_INDEX_NAME
 
 # Настройка логирования
 logging.basicConfig(

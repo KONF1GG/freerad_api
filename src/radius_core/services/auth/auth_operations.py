@@ -28,15 +28,14 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
     try:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
 
-        login = await find_login_by_session(data, redis)
-        logger.debug("Данные логина: %s", login)
+        login: LoginSearchResult | VideoLoginSearchResult | None = await find_login_by_session(data, redis)
         session_limit = 5
 
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
 
         # Пользователь не найден
-        if not login:
+        if not login.login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
 
             # Специальная логика для NAS 10.10.15.212 с PPP протоколом
@@ -294,12 +293,12 @@ def _handle_duplicate_session(auth_response: AuthResponse, login: Any) -> AuthRe
 
 
 async def _save_auth_log(
-    data: AuthRequest, login: Any, reply_code: str, reason: str
+    data: AuthRequest, login: LoginSearchResult | VideoLoginSearchResult, reply_code: str, reason: str
 ) -> None:
     """Сохраняет лог авторизации"""
     try:
         speed_val = None
-        if login:
+        if login.login:
             speed_val = getattr(
                 getattr(getattr(login, "servicecats", None), "internet", None),
                 "speed",

@@ -9,7 +9,7 @@ from ...models.schemas import VideoLoginSearchResult
 from ...clients import execute_redis_command
 
 from ...utils import (
-    is_mac_username,
+    is_username_mac,
     mac_from_username,
     mac_from_hex,
     nasportid_parse,
@@ -126,58 +126,58 @@ async def find_login_by_session(
     redis,
 ) -> Optional[Union[LoginSearchResult, VideoLoginSearchResult]]:
     """
-    Асинхронный поиск логина по данным сессии.
-
     Args:
         session: Данные сессии (AccountingData).
         redis: Redis client
-
-    Returns:
-        Optional[LoginSearchResult]: Результат поиска или None, если логин не найден.
     """
 
     try:
+        # Получаем все данные необходимые для поиска
         nas_port_id = session.NAS_Port_Id
-        if not nas_port_id:
-            logger.warning("Missing NAS-Port-Id in session")
-            return None
-
-        nasportid = nasportid_parse(nas_port_id)
-        vlan = nasportid.get("cvlan") or nasportid.get("svlan", "")
-        if not vlan:
-            logger.warning("Could not extract VLAN from NAS-Port-Id: %s", nas_port_id)
-            return None
-
         username = session.User_Name
-        if not username:
-            logger.warning("Missing User-Name in session")
-            return None
+        is_mac_username = is_username_mac(username)
+        remote_id = session.ADSL_Agent_Remote_Id
 
-        if is_mac_username(username):
+        # Инициализируем переменные
+        mac = ''
+        vlan = ''
+        onu_mac = ''
+
+        # Извлекаем VLAN
+        if nas_port_id:
+            nasportid = nasportid_parse(nas_port_id)
+            vlan = nasportid.get("cvlan") or nasportid.get("svlan", "")
+            vlan = vlan.replace("-", "\\-").replace(":", "\\:")
+
+        if username and is_mac_username:
             mac = mac_from_username(username).replace(":", r"\:")
 
-            # Поиск логина по МАКу
-            # Экранируем специальные символы в vlan
-            escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
-            search_query = f"@mac:{{{mac}}}@vlan:{{{escaped_vlan}}}"
+        if remote_id:
+            onu_mac = mac_from_hex(remote_id).replace(":", r"\:")
+
+        # Проверяем обязательные поля
+        if not nas_port_id or not vlan or not username:
+            logger.warning("Missing required fields: nas_port_id=%s, vlan=%s, username=%s", 
+                         nas_port_id, vlan, username)
+            return LoginSearchResult(mac=mac, vlan=vlan, onu_mac=onu_mac)
+
+        if is_mac_username:
+            # Поиск логина по mac+vlan
+            search_query = f"@mac:{{{mac}}}@vlan:{{{vlan}}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
                 return result
 
-            # Поиск камеры по МАКу
+            # Поиск камеры по MAC
             search_query = f"@mac:{{{mac}}}"
-            logger.debug(
-                "Поиск видеокамеры по MAC: %s (индекс: idx:device)", search_query
-            )
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
             )
             if result:
                 return result
 
-            remote_id = session.ADSL_Agent_Remote_Id
-            if remote_id:
-                onu_mac = mac_from_hex(remote_id).replace(":", r"\:")
+            # Поиск логина по onu_mac
+            if onu_mac:
                 search_query = f"@onu_mac:{{{onu_mac}}}"
                 result = await search_redis(redis, search_query, auth_type="OPT82")
                 if result:
@@ -188,9 +188,7 @@ async def find_login_by_session(
             if static_match:
                 ip = static_match.groups()[0]
                 escaped_ip = ip.replace(".", "\\.")
-                # Экранируем специальные символы в vlan
-                escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
-                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{escaped_vlan}}}"
+                search_query = f"@ip_addr:{{{escaped_ip}}}@vlan:{{{vlan}}}"
                 result = await search_redis(redis, search_query, auth_type="STATIC")
                 if result:
                     return result
@@ -207,7 +205,8 @@ async def find_login_by_session(
                     return result
 
         logger.info("Login not found: username=%s, VLAN=%s", username, vlan)
-        return None
+
+        return LoginSearchResult(mac=mac, vlan=vlan, onu_mac=onu_mac)
 
     except Exception as e:
         logger.error("Critical error in find_login_by_session: %s", e)

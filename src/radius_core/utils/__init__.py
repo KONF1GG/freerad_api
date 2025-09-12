@@ -2,7 +2,7 @@
 
 from .helpers import (
     nasportid_parse,
-    is_mac_username,
+    is_username_mac,
     mac_from_username,
     username_from_mac,
     mac_from_hex,
@@ -12,7 +12,7 @@ from .helpers import (
 
 __all__ = [
     "nasportid_parse",
-    "is_mac_username",
+    "is_username_mac",
     "mac_from_username",
     "username_from_mac",
     "mac_from_hex",

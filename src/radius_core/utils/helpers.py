@@ -49,7 +49,7 @@ def nasportid_parse(nasportid: str) -> Dict[str, str]:
     return m.groupdict() if m else {"psiface": "", "svlan": "", "cvlan": ""}
 
 
-def is_mac_username(username: str) -> bool:
+def is_username_mac(username: str) -> bool:
     """Проверяет, является ли username MAC-адресом"""
     return bool(re.match(r"^([0-9a-f]{4}\.){2}([0-9a-f]{4})$", username))
 

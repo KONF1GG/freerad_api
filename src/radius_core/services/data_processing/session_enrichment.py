@@ -20,21 +20,12 @@ async def enrich_session_with_login(
 
     Args:
         session_req: Данные сессии (AccountingData).
-        login: Данные логина (LoginSearchResult) или None.
+        login: Данные логина (LoginSearchResult,  VideoLoginSearchResult) или None.
 
     Returns:
         EnrichedSessionData: Обогащенная модель сессии с данными логина.
     """
     session_dict = session_req.model_dump(by_alias=True)
+    session_dict.update(login.model_dump(by_alias=True))
 
-    if login:
-        session_dict.update(login.model_dump(by_alias=True))
-
-    try:
-        return EnrichedSessionData(**session_dict)
-    except ValidationError as e:
-        logger.error("Failed to create EnrichedSessionData: %s", e)
-        accounting_fields = AccountingData.model_fields.keys()
-        return EnrichedSessionData(
-            **{k: v for k, v in session_dict.items() if k in accounting_fields}
-        )
+    return EnrichedSessionData(**session_dict)
