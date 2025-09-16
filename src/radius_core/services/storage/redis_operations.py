@@ -24,11 +24,21 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
         if not session_data:
             return None
 
-        # Парсим JSON строку в словарь
-        if isinstance(session_data, bytes):
+        # JSON.GET может возвращать либо строку, либо уже распарсенный dict
+        if isinstance(session_data, dict):
+            # Уже распарсенный словарь
+            session_dict = session_data
+        elif isinstance(session_data, bytes):
+            # Строка в байтах
             session_data = session_data.decode("utf-8")
+            session_dict = json.loads(session_data)
+        elif isinstance(session_data, str):
+            # Строка JSON
+            session_dict = json.loads(session_data)
+        else:
+            logger.error("Unexpected data type from JSON.GET: %s", type(session_data))
+            return None
 
-        session_dict = json.loads(session_data)
         session = SessionData(**session_dict)
         return session
 

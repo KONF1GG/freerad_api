@@ -148,7 +148,6 @@ async def find_login_by_session(
         escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
         escaped_onu_mac = onu_mac.replace(":", r"\:")
 
-
         if is_mac_username:
             # Поиск логина по mac+vlan
             search_query = f"@mac:{{{escaped_mac}}}@vlan:{{{escaped_vlan}}}"
@@ -319,8 +318,32 @@ async def get_camera_login_from_redis(
         camera_key = f"camera:{camera_id}"
         camera_data = await execute_redis_command(redis, "JSON.GET", camera_key)
 
-        if not camera_data or not isinstance(camera_data, dict):
+        if not camera_data:
             logger.warning("Данные камеры не найдены для ключа %s", camera_key)
+            return None
+
+        # JSON.GET может возвращать либо строку, либо уже распарсенный dict
+        if isinstance(camera_data, str):
+            try:
+                camera_data = json.loads(camera_data)
+            except json.JSONDecodeError as e:
+                logger.error("Failed to parse JSON для ключа %s: %s", camera_key, e)
+                return None
+        elif isinstance(camera_data, bytes):
+            try:
+                camera_data = camera_data.decode("utf-8")
+                camera_data = json.loads(camera_data)
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                logger.error(
+                    "Failed to decode/parse JSON для ключа %s: %s", camera_key, e
+                )
+                return None
+        elif not isinstance(camera_data, dict):
+            logger.warning(
+                "Unexpected data type from JSON.GET для ключа %s: %s",
+                camera_key,
+                type(camera_data),
+            )
             return None
 
         # Извлекаем login из logins[0]
