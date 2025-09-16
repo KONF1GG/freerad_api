@@ -251,10 +251,10 @@ def _configure_regular_services(
             "contype",
             None,
         )
-        
+
         if contype == 'social':
             auth_response.reply_erx_service_activate = "INET-SOCIAL()"
-        else:            
+        else:
             auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
 
     else:

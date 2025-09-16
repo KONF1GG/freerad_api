@@ -163,6 +163,7 @@ class ServiceCategory(BaseModel):
 
     timeto: Optional[int] = None
     speed: Optional[int] = None
+    contype: Optional[str] = None
 
 
 class ServiceCats(BaseModel):
