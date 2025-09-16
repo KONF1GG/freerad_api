@@ -245,7 +245,18 @@ def _configure_regular_services(
     # Выставляем услугу
     if not service_should_be_blocked:
         calc_speed = int(float(speed) * 1100) if speed is not None else 0
-        auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
+
+        contype = getattr(
+            getattr(getattr(login, "servicecats", None), "internet", None),
+            "contype",
+            None,
+        )
+        
+        if contype == 'social':
+            auth_response.reply_erx_service_activate = "INET-SOCIAL()"
+        else:            
+            auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
+
     else:
         auth_response.reply_erx_service_activate = "NOINET-NOMONEY()"
 
