@@ -3,16 +3,17 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 from fastapi import HTTPException
 
 from radius_core.services.monitoring.service_checker import (
     check_and_correct_service_state,
 )
+from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
 
 from ...models.schemas import (
     EnrichedSessionData,
-    LoginSearchResult,
+    VideoLoginSearchResult,
 )
 
 from ...config import RADIUS_SESSION_PREFIX
@@ -51,74 +52,90 @@ logger = logging.getLogger(__name__)
 
 @track_function("radius", "process_accounting")
 async def process_accounting(
-    data: AccountingData, redis, rabbitmq
+    session_req: AccountingData, redis, rabbitmq
 ) -> AccountingResponse:
     """Основная функция обработки аккаунтинга"""
 
     try:
-        session_req = data
-        packet_type = session_req.Acct_Status_Type
-        session_id = session_req.Acct_Session_Id
-        session_unique_id = session_req.Acct_Unique_Session_Id
-        event_time = session_req.Event_Timestamp
-        service = session_req.ERX_Service_Session
-        is_service_session = bool(service)
-
+        (
+            username,
+            onu_mac,
+            vlan,
+            is_mac_username,
+        ) = await get_username_onu_mac_vlan_from_data(session_req)
+        is_service_session = bool(session_req.ERX_Service_Session)
+        redis_session_key = (
+            f"{RADIUS_SESSION_PREFIX}{session_req.Acct_Unique_Session_Id}"
+        )
         event_timestamp = int(
             session_req.Event_Timestamp.astimezone(timezone.utc).timestamp()
         )
 
         logger.info(
-            "Обработка аккаунтинга: %s для сессии %s", packet_type, session_unique_id
+            "Аккаунтинг %s для сессии %s",
+            session_req.Acct_Status_Type,
+            session_req.Acct_Unique_Session_Id,
         )
 
         # Получаем активную сессию из Redis и данные логина
-        redis_key = f"{RADIUS_SESSION_PREFIX}{session_unique_id}"
         session_stored, login = await asyncio.gather(
-            get_session_from_redis(redis_key, redis),
-            find_login_by_session(session_req, redis),
+            get_session_from_redis(redis_session_key, redis),
+            find_login_by_session(username, onu_mac, vlan, is_mac_username, redis),
         )
 
-        if login.login and login.auth_type == "VIDEO":
+        if login and login.auth_type == "VIDEO":
             # Получаем логин камеры из Redis
             camera_login = await get_camera_login_from_redis(login, redis)
             if camera_login:
                 login.login = camera_login
 
-        # Добавляем данные логина в данные сессии
-        session_req = await enrich_session_with_login(session_req, login)
+        # Если логин не найден, используем "фейковую" модель с известными параметрами
+        login_data = login
+        if not login_data:
+            params = {"vlan": vlan, "onu_mac": onu_mac}
+            if is_mac_username:
+                params["mac"] = username
+            login_data = VideoLoginSearchResult(**params)
+
+        # Обогащаем данные сессии информацией о логине
+        session_req = await enrich_session_with_login(session_req, login_data)
 
         # Соединяем счетчики трафика
         session_req = process_traffic_data(session_req)
 
         # Обработка сервисных сессий
-        if is_service_session and packet_type != "Stop":
-            if packet_type == "Start":
-                await asyncio.sleep(0.3)
+        if is_service_session and session_req.Acct_Status_Type == "Start":
+            await asyncio.sleep(0.3)
             logger.info(
-                "Добавление сервиса в основную сессию (%s) %s", packet_type, session_id
+                "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
+                session_req.Acct_Status_Type,
+                session_req.Acct_Session_Id,
             )
-            await update_main_session_service(session_req, redis)
+            asyncio.create_task(update_main_session_service(session_req, redis))
 
         # Обработка завершения сессии при изменении логина или его отсутствии
-        if packet_type != "Stop" and login.login and login.auth_type != "VIDEO":
+        if (
+            session_req.Acct_Status_Type != "Stop"
+            and session_stored
+            and session_req.auth_type != "VIDEO"
+        ):
             result = await _handle_session_closure_conditions(
                 redis,
                 rabbitmq,
-                redis_key,
+                redis_session_key,
                 session_stored,
                 session_req,
-                event_time,
-                session_unique_id,
-                login,
+                session_req.Event_Timestamp,
+                session_req.Acct_Unique_Session_Id,
             )
             if result:
                 return result
+
         # Проверка состояния сервисов для сервисных сессий update
         if (
-            login.login
+            login
             and is_service_session
-            and packet_type == "Interim-Update"
+            and session_req.Acct_Status_Type == "Interim-Update"
             and login.auth_type != "VIDEO"
         ):
             try:
@@ -129,13 +146,13 @@ async def process_accounting(
                     logger.info(
                         "Выполнена коррекция сервисов для сессии %s - %s: %s",
                         login.login,
-                        session_unique_id,
+                        session_req.Acct_Unique_Session_Id,
                         correction_result,
                     )
             except Exception as e:
                 logger.error(
                     "Ошибка при проверке состояния сервисов для сессии %s: %s",
-                    session_unique_id,
+                    session_req.Acct_Unique_Session_Id,
                     e,
                     exc_info=True,
                 )
@@ -144,38 +161,45 @@ async def process_accounting(
         session_new = _prepare_session_data(session_stored, session_req)
 
         # Обработка по типу пакета
-        if packet_type == "Start":
+        if session_req.Acct_Status_Type == "Start":
             await _handle_start_packet(
-                session_new, event_time, redis_key, redis, is_service_session
+                session_new,
+                session_req.Event_Timestamp,
+                redis_session_key,
+                redis,
+                is_service_session,
             )
-        elif packet_type == "Interim-Update":
+        elif session_req.Acct_Status_Type == "Interim-Update":
             await _handle_interim_update_packet(
                 session_new,
                 session_stored,
-                event_time,
+                session_req.Event_Timestamp,
                 event_timestamp,
                 is_service_session,
-                redis_key,
+                redis_session_key,
                 redis,
             )
-        elif packet_type == "Stop":
+        elif session_req.Acct_Status_Type == "Stop":
             await _handle_stop_packet(
                 session_new,
                 session_stored,
-                event_time,
+                session_req.Event_Timestamp,
                 event_timestamp,
-                redis_key,
+                redis_session_key,
                 redis,
             )
         else:
-            logger.error("Неизвестный тип пакета: %s", packet_type)
+            logger.error("Неизвестный тип пакета: %s", session_req.Acct_Status_Type)
             raise HTTPException(
-                status_code=400, detail=f"Unknown packet type: {packet_type}"
+                status_code=400,
+                detail=f"Unknown packet type: {session_req.Acct_Status_Type}",
             )
 
-        logger.info("Аккаунтинг успешно обработан: %s", packet_type)
+        logger.info("Аккаунтинг успешно обработан: %s", session_req.Acct_Status_Type)
         return AccountingResponse(
-            action="noop", reason="processed successfully", session_id=session_unique_id
+            action="noop",
+            reason="processed successfully",
+            session_id=session_req.Acct_Unique_Session_Id,
         )
 
     except HTTPException:
@@ -189,18 +213,17 @@ async def _handle_session_closure_conditions(
     redis,
     rabbitmq,
     redis_key: str,
-    session_stored: SessionData | None,
+    session_stored: SessionData,
     session_req: EnrichedSessionData,
     event_time: datetime,
     session_unique_id: str,
-    login: LoginSearchResult | None = None,
 ) -> Optional[AccountingResponse]:
     """Обрабатывает условий для завершения сессии"""
-    stored_login = session_stored.login if session_stored else None
-    current_login = login.login
+    stored_login = session_stored.login
+    current_login = session_req.login
 
     # 1. Существующая сессия авторизована, а текущая нет
-    if session_stored and stored_login and not current_login:
+    if stored_login and not current_login:
         logger.warning(
             "Сессия %s найдена авторизованная, но сейчас логин %s не найден. ",
             session_unique_id,
@@ -227,12 +250,7 @@ async def _handle_session_closure_conditions(
             logger.info("Логин %s не найден в Redis, просто логируем", stored_login)
 
     # 2. Логин изменился
-    elif (
-        session_stored
-        and current_login
-        and stored_login
-        and stored_login != current_login
-    ):
+    elif current_login and stored_login and stored_login != current_login:
         logger.warning(
             "Логин изменился с %s на %s, завершаем сессию. %s",
             stored_login,
@@ -253,7 +271,7 @@ async def _handle_session_closure_conditions(
         )
 
     # 3. Сессия была UNAUTH, теперь авторизована
-    elif session_stored and not stored_login and current_login:
+    elif not stored_login and current_login:
         logger.warning(
             "Сессия %s была UNAUTH, теперь логин %s авторизован",
             session_unique_id,
@@ -285,14 +303,21 @@ def _prepare_session_data(
         session_req_dict = session_req.model_dump(by_alias=True)
 
         stored_login = session_stored_dict.get("login", None)
+        stored_mac = session_stored_dict.get("mac", None)
+        stored_vlan = session_stored_dict.get("vlan", None)
+        stored_onu_mac = session_stored_dict.get("onu_mac", None)
         stored_erx_service_session = session_stored_dict.get(
             "ERX-Service-Session", None
         )
 
         session_stored_dict.update(session_req_dict)
 
+        # При Stop и изменении логина возвращаем старые значения login, mac, vlan, onu_mac
         if session_req.Acct_Status_Type == "Stop" and stored_login != session_req.login:
             session_stored_dict["login"] = stored_login
+            session_stored_dict["mac"] = stored_mac
+            session_stored_dict["vlan"] = stored_vlan
+            session_stored_dict["onu_mac"] = stored_onu_mac
 
         session_stored_dict["ERX-Service-Session"] = stored_erx_service_session
         return SessionData(**session_stored_dict)
@@ -325,7 +350,7 @@ async def _handle_start_packet(
 
 async def _handle_interim_update_packet(
     session_new: SessionData,
-    session_stored: Any,
+    session_stored: SessionData | None,
     event_time: datetime,
     event_timestamp: int,
     is_service_session: bool,
@@ -346,9 +371,7 @@ async def _handle_interim_update_packet(
     # Отправляем во все очереди
     asyncio.create_task(
         _send_to_queue_with_logging(
-            lambda data: send_to_traffic_queue(
-                data, session_stored if session_stored else None
-            ),
+            lambda data: send_to_traffic_queue(data, session_stored),
             session_new,
             "traffic_queue",
         )
@@ -360,7 +383,7 @@ async def _handle_interim_update_packet(
 
 async def _handle_stop_packet(
     session_new: SessionData,
-    session_stored: Any,
+    session_stored: SessionData | None,
     event_time: datetime,
     event_timestamp: int,
     redis_key: str,
@@ -390,9 +413,7 @@ async def _handle_stop_packet(
     )
     asyncio.create_task(
         _send_to_queue_with_logging(
-            lambda data: send_to_traffic_queue(
-                data, session_stored if session_stored else None
-            ),
+            lambda data: send_to_traffic_queue(data, session_stored),
             session_new,
             "traffic_queue",
         )
@@ -400,8 +421,8 @@ async def _handle_stop_packet(
 
 
 async def _merge_and_close_session(
-    session_stored: Any,
-    session_req: Any,
+    session_stored: SessionData,
+    session_req: EnrichedSessionData,
     redis_key: str,
     redis,
     event_time: datetime,
@@ -433,9 +454,7 @@ async def _merge_and_close_session(
     )
     asyncio.create_task(
         _send_to_queue_with_logging(
-            lambda data: send_to_traffic_queue(
-                data, session_stored if session_stored else None
-            ),
+            lambda data: send_to_traffic_queue(data, session_stored),
             session_to_close,
             "traffic_queue",
         )

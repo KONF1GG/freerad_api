@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @track_function("redis", "get_session")
 async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]:
     """
-    Получение сессии из Redis и преобразование в модель RedisSessionData.
+    Получение сессии из Redis и преобразование в модель SessionData.
     """
     try:
         session_data = await execute_redis_command(redis, "JSON.GET", redis_key)
@@ -28,13 +28,13 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
         return session
 
     except json.JSONDecodeError as e:
-        logger.error("Failed to parse JSON for key %s: %s", redis_key, e)
+        logger.error("Failed to parse JSON для ключа %s: %s", redis_key, e)
         return None
     except ValidationError as e:
-        logger.error("Invalid session data for key %s: %s", redis_key, e)
+        logger.error("Invalid session data для ключа %s: %s", redis_key, e)
         return None
     except Exception as e:
-        logger.error("Failed to get session from Redis for key %s: %s", redis_key, e)
+        logger.error("Failed to get session from Redis для ключа %s: %s", redis_key, e)
         return None
 
 

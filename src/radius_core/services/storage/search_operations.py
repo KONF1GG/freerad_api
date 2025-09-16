@@ -30,7 +30,7 @@ async def search_redis(
     redis_key: Optional[str] = None,
 ) -> Optional[Union[LoginSearchResult, VideoLoginSearchResult]]:
     """
-    Универсальный поиск в Redis по заданному запросу или ключу.
+    Поиск в Redis по заданному запросу или ключу.
 
     Args:
         redis: Асинхронный Redis-клиент.
@@ -103,9 +103,6 @@ async def search_redis(
         if auth_type == "VIDEO":
             if redis_key:
                 parsed_data["key"] = redis_key
-
-        # Создаем модель в зависимости от типа
-        if auth_type == "VIDEO":
             login_result = VideoLoginSearchResult(**parsed_data)
         else:
             login_result = LoginSearchResult(**parsed_data)
@@ -122,55 +119,35 @@ async def search_redis(
 
 @track_function("redis", "find_login")
 async def find_login_by_session(
-    session: Any,
+    username: str,
+    onu_mac: str,
+    vlan: str,
+    is_mac_username: bool,
     redis,
-) -> Union[LoginSearchResult, VideoLoginSearchResult]:
+) -> Optional[LoginSearchResult | VideoLoginSearchResult]:
     """
     Args:
-        session: Данные сессии (AccountingData).
+        username
+        onu_mac: MAC-адрес ONU
+        vlan: VLAN
+        is_mac_username: Флаг, указывающий, что username является MAC-адресом
         redis: Redis client
     """
 
     try:
-        # Получаем все данные необходимые для поиска
-        nas_port_id = session.NAS_Port_Id
-        username = session.User_Name
-        is_mac_username = is_username_mac(username)
-        remote_id = session.ADSL_Agent_Remote_Id
-
-        # Инициализируем переменные
-        mac = ""
-        vlan = ""
-        onu_mac = ""
-
-        # Переменные для экранированных данных для поиска
-        escaped_mac = ""
-        escaped_vlan = ""
-        escaped_onu_mac = ""
-
-        # Извлекаем VLAN
-        if nas_port_id:
-            nasportid = nasportid_parse(nas_port_id)
-            vlan = nasportid.get("cvlan") or nasportid.get("svlan", "")
-            escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
-
-        if username and is_mac_username:
-            mac = mac_from_username(username)
-            escaped_mac = mac.replace(":", r"\:")
-
-        if remote_id:
-            onu_mac = mac_from_hex(remote_id)
-            escaped_onu_mac = onu_mac.replace(":", r"\:")
-
-        # Проверяем обязательные поля
-        if not nas_port_id or not vlan or not username:
+        if not vlan or not username:
             logger.warning(
-                "Missing required fields: nas_port_id=%s, vlan=%s, username=%s",
-                nas_port_id,
+                "Нет хотя бы одного из полей: vlan=%s, username=%s",
                 vlan,
                 username,
             )
-            return LoginSearchResult(mac=mac, vlan=vlan, onu_mac=onu_mac)
+            return None
+
+        # Переменные для экранированных данных для поиска
+        escaped_mac = username.replace(":", r"\:")
+        escaped_vlan = vlan.replace("-", "\\-").replace(":", "\\:")
+        escaped_onu_mac = onu_mac.replace(":", r"\:")
+
 
         if is_mac_username:
             # Поиск логина по mac+vlan
@@ -217,12 +194,11 @@ async def find_login_by_session(
 
         logger.info("Login not found: username=%s, VLAN=%s", username, vlan)
 
-        return LoginSearchResult(mac=mac, vlan=vlan, onu_mac=onu_mac)
+        return None
 
     except Exception as e:
         logger.error("Critical error in find_login_by_session: %s", e)
-        # Возвращаем пустую модель вместо None
-        return LoginSearchResult(mac="", vlan="", onu_mac="")
+        return None
 
 
 async def find_sessions_by_login(
@@ -268,8 +244,6 @@ async def find_sessions_by_login(
     else:
         query = " | ".join(query_parts)
 
-    # Исключаем VIDEO сессии
-    query = f"({query} -@auth_type:{{VIDEO}})"
     index = "idx:radius:session"
 
     logger.info("Executing FT.SEARCH query: %s on index: %s", query, index)

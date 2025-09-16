@@ -6,6 +6,9 @@ import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
+from ...config.settings import SESSION_LIMIT
+from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
+
 from ...models.schemas import LoginSearchResult, VideoLoginSearchResult
 from ..monitoring.service_utils import check_service_expiry
 
@@ -27,17 +30,17 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
     try:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
+        username, onu_mac, vlan, is_mac_username = await get_username_onu_mac_vlan_from_data(data)
 
-        login: LoginSearchResult | VideoLoginSearchResult = await find_login_by_session(
-            data, redis
+        login: LoginSearchResult | VideoLoginSearchResult | None = await find_login_by_session(
+            username, onu_mac, vlan, is_mac_username, redis
         )
-        session_limit = 5
 
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
 
         # Пользователь не найден
-        if not login.login:
+        if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
 
             # Специальная логика для NAS 10.10.15.212 с PPP протоколом
@@ -78,7 +81,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             auth_response = await _handle_video_auth(data, login, auth_response)
         else:
             auth_response = await _handle_regular_auth(
-                data, login, auth_response, nasportid, session_limit, redis
+                data, login, auth_response, nasportid, redis
             )
 
         # Определяем код ответа
@@ -143,7 +146,6 @@ async def _handle_regular_auth(
     login: LoginSearchResult,
     auth_response: AuthResponse,
     nasportid: Dict[str, Any],
-    session_limit: int,
     redis,
 ) -> AuthResponse:
     """Обрабатывает авторизацию обычных пользователей"""
@@ -151,7 +153,7 @@ async def _handle_regular_auth(
     session_count = len(sessions)
 
     # Проверяем лимит сессий
-    if session_count >= session_limit:
+    if session_count >= SESSION_LIMIT:
         logger.warning(
             "Превышен лимит сессий (%s) для пользователя %s",
             session_count,
