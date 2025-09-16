@@ -24,7 +24,12 @@ async def get_session_from_redis(redis_key: str, redis) -> Optional[SessionData]
         if not session_data:
             return None
 
-        session = SessionData(**session_data)
+        # Парсим JSON строку в словарь
+        if isinstance(session_data, bytes):
+            session_data = session_data.decode("utf-8")
+
+        session_dict = json.loads(session_data)
+        session = SessionData(**session_dict)
         return session
 
     except json.JSONDecodeError as e:
