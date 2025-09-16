@@ -30,11 +30,16 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
     try:
         logger.info("Попытка авторизации пользователя: %s", data.User_Name)
-        username, onu_mac, vlan, is_mac_username = await get_username_onu_mac_vlan_from_data(data)
+        (
+            username,
+            onu_mac,
+            vlan,
+            is_mac_username,
+        ) = await get_username_onu_mac_vlan_from_data(data)
 
-        login: LoginSearchResult | VideoLoginSearchResult | None = await find_login_by_session(
-            username, onu_mac, vlan, is_mac_username, redis
-        )
+        login: (
+            LoginSearchResult | VideoLoginSearchResult | None
+        ) = await find_login_by_session(username, onu_mac, vlan, is_mac_username, redis)
 
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
@@ -298,14 +303,14 @@ def _handle_duplicate_session(auth_response: AuthResponse, login: Any) -> AuthRe
 
 async def _save_auth_log(
     data: AuthRequest,
-    login: LoginSearchResult | VideoLoginSearchResult,
+    login: LoginSearchResult | VideoLoginSearchResult | None,
     reply_code: str,
     reason: str,
 ) -> None:
     """Сохраняет лог авторизации"""
     try:
         speed_val = None
-        if login.login:
+        if login and login.login:
             speed_val = getattr(
                 getattr(getattr(login, "servicecats", None), "internet", None),
                 "speed",
@@ -313,8 +318,8 @@ async def _save_auth_log(
             )
 
         log_entry = AuthDataLog(
-            username=getattr(login, "login", None),
-            password=getattr(login, "password", None),
+            username=getattr(login, "login", None) if login else None,
+            password=getattr(login, "password", None) if login else None,
             callingstationid=data.Calling_Station_Id,
             nasipaddress=data.NAS_IP_Address,
             reply=reply_code,
