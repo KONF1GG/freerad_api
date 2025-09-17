@@ -44,6 +44,24 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
 
+        # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
+        # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
+        if nasportid["svlan"][0] == "5" and onu_mac == "":
+            auth_response.reply_message = {
+                "value": "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)"
+            }
+            auth_response.control_auth_type = {"value": "Reject"}
+
+            asyncio.create_task(
+                _save_auth_log(
+                    data,
+                    login,
+                    "Access-Reject",
+                    "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)",
+                )
+            )
+            return auth_response.to_radius()
+
         # Пользователь не найден
         if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
