@@ -46,7 +46,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
-        if nasportid["svlan"][0] == "5" and onu_mac == "":
+        if nasportid["svlan"][0] == "5" and onu_mac == "" and data.Framed_Protocol != "PPP":
             auth_response.reply_message = {
                 "value": "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)"
             }
