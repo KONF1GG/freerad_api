@@ -74,7 +74,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     data.User_Name,
                 )
                 auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
+                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)} | {data.ADSL_Agent_Remote_Id}"
                 }
                 auth_response.control_auth_type = {"value": "Reject"}
 
