@@ -280,7 +280,7 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
     ]
     logger.info("Сессии для логина %s: %s", login_name, ", ".join(session_info))
 
-    # Если fields_changed=True - убиваем все сессии
+    # Если fields_changed=True - убиваем все сессии (включая VIDEO)
     if fields_changed:
         logger.info(
             "Поля логина изменились, убиваем все %s сессий для логина %s",
@@ -290,13 +290,15 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
 
         detailed_reason = f"Login fields changed for {login_name}"
 
-        # Отправляем CoA kill для всех сессий
+        # Отправляем CoA kill для всех сессий (включая VIDEO)
         kill_tasks = []
         for session in sessions:
+            session_auth_type = session.auth_type or "UNKNOWN"
             logger.info(
-                "CoA KILL: убийство сессии %s (%s), причина: %s",
+                "CoA KILL: убийство сессии %s (%s, %s), причина: %s",
                 session.Acct_Unique_Session_Id,
                 login_name,
+                session_auth_type,
                 detailed_reason,
             )
             kill_tasks.append(
@@ -352,12 +354,28 @@ async def _check_login_services(key: str, fields_changed: bool, redis, channel=N
             )
             login_mismatch_found = True
 
-    # Если логин не изменился - проверяем сервисы
+    # Если логин не изменился - проверяем сервисы (исключая VIDEO сессии)
     if not login_mismatch_found:
-        logger.info("Логин не изменился, проверяем сервисы для логина %s", login_name)
+        # Фильтруем сессии, исключая VIDEO
+        non_video_sessions = [s for s in sessions if s.auth_type != "VIDEO"]
+        video_sessions = [s for s in sessions if s.auth_type == "VIDEO"]
 
-        # Проверяем и корректируем состояние сервисов для каждой сессии
-        for session in sessions:
+        logger.info(
+            "Логин не изменился, проверяем сервисы для %s сессий логина %s (исключено %s VIDEO сессий)",
+            len(non_video_sessions),
+            login_name,
+            len(video_sessions),
+        )
+
+        if video_sessions:
+            video_session_ids = [s.Acct_Unique_Session_Id for s in video_sessions]
+            logger.info(
+                "Пропускаем проверку сервисов для VIDEO сессий: %s",
+                ", ".join(video_session_ids),
+            )
+
+        # Проверяем и корректируем состояние сервисов только для не-Video сессий
+        for session in non_video_sessions:
             try:
                 correction_result = await check_and_correct_service_state(
                     session, login_data, login_name, channel

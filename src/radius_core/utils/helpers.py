@@ -124,5 +124,3 @@ def mac_from_hex(hex_var: str) -> str:
             else:
                 return template.format(body).upper()
     return ":".join(hex_var[i : i + 2] for i in range(2, 14, 2)).upper()
-
-
