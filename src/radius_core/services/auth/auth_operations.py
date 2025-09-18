@@ -74,7 +74,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     data.User_Name,
                 )
                 auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
+                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
                 }
                 auth_response.control_auth_type = {"value": "Reject"}
 
@@ -83,7 +83,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         data,
                         login,
                         "Access-Reject",
-                        f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}",
+                        f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}",
                     )
                 )
                 return auth_response.to_radius()
