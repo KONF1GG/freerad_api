@@ -18,7 +18,7 @@ from ..storage.search_operations import (
 )
 from ..storage.queue_operations import send_auth_log_to_queue
 from ...models import AuthRequest, AuthResponse, AuthDataLog
-from ...utils import nasportid_parse
+from ...utils import nasportid_parse, mac_from_hex
 from ...core.metrics import track_function
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     data.User_Name,
                 )
                 auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}]"
+                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
                 }
                 auth_response.control_auth_type = {"value": "Reject"}
 
@@ -83,18 +83,18 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         data,
                         login,
                         "Access-Reject",
-                        f"User not found [{data.User_Name}]",
+                        f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}",
                     )
                 )
                 return auth_response.to_radius()
 
             # Обычная логика для остальных случаев
             auth_response = _build_noinet_novlan(
-                auth_response, f"User not found [{data.User_Name}]"
+                auth_response, f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
             )
             asyncio.create_task(
                 _save_auth_log(
-                    data, login, "Access-Accept", f"User not found [{data.User_Name}]"
+                    data, login, "Access-Accept", f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
                 )
             )
             return auth_response.to_radius()
