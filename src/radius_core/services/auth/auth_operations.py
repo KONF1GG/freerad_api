@@ -74,7 +74,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     data.User_Name,
                 )
                 auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)} | {data.ADSL_Agent_Remote_Id}"
+                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
                 }
                 auth_response.control_auth_type = {"value": "Reject"}
 
@@ -90,11 +90,11 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
             # Обычная логика для остальных случаев
             auth_response = _build_noinet_novlan(
-                auth_response, f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
+                auth_response, f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
             )
             asyncio.create_task(
                 _save_auth_log(
-                    data, login, "Access-Accept", f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Circuit_Id)}"
+                    data, login, "Access-Accept", f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
                 )
             )
             return auth_response.to_radius()
