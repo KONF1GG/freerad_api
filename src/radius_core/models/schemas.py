@@ -1,14 +1,19 @@
-from unittest.mock import Base
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, ConfigDict
-from typing import Optional, Dict, Any, Literal, Union
-from utils import parse_event
+"""Модели для работы с данными RADIUS."""
+
 import logging
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+from ..utils import parse_event
 
 logger = logging.getLogger(__name__)
 
 
 class BaseAccountingData(BaseModel):
+    """Базовая модель для данных учета."""
+
     Acct_Session_Id: str = Field(..., alias="Acct-Session-Id")
     Acct_Status_Type: str = Field("UNKNOWN", alias="Acct-Status-Type")
     Event_Timestamp: datetime = Field(
@@ -68,7 +73,8 @@ class BaseAccountingData(BaseModel):
     Acct_Terminate_Cause: Optional[str] = Field(None, alias="Acct-Terminate-Cause")
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+    @classmethod
+    def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
@@ -91,7 +97,8 @@ class BaseAccountingData(BaseModel):
         "ERX_IPv6_Acct_Output_Octets",
         mode="before",
     )
-    def safe_int(cls, value: Any, info: ValidationInfo) -> int:
+    @classmethod
+    def safe_int(cls: type, value: Any, info: ValidationInfo) -> int:
         """Безопасное преобразование в int из любого типа."""
         # Если None или пустая строка — 0
         if value is None or value == "":
@@ -99,7 +106,8 @@ class BaseAccountingData(BaseModel):
 
         # Если dict с ключом 'value' — берём первый элемент
         if isinstance(value, dict):
-            value = value.get("value", [0])[0]
+            value_list = value.get("value", [0])
+            value = value_list[0] if value_list else 0
 
         # Если строка — пробуем int()
         if isinstance(value, str):
@@ -110,7 +118,7 @@ class BaseAccountingData(BaseModel):
                 return int(value)
             except ValueError:
                 logger.warning(
-                    f"Invalid string for {info.field_name}: '{value}', using 0"
+                    "Invalid string for %s: '%s', using 0", info.field_name, value
                 )
                 return 0
 
@@ -119,7 +127,10 @@ class BaseAccountingData(BaseModel):
             return int(value)
         except (ValueError, TypeError):
             logger.warning(
-                f"Unsupported type for {info.field_name}: {type(value)} ({value}), using 0"
+                "Unsupported type for %s: %s (%s), using 0",
+                info.field_name,
+                type(value),
+                value,
             )
             return 0
 
@@ -127,25 +138,36 @@ class BaseAccountingData(BaseModel):
 
 
 class AccountingData(BaseAccountingData):
-    pass
+    """Модель для данных учета."""
 
 
-class AccountingResponse(BaseModel):
+class BaseResponse(BaseModel):
+    """Базовая модель для ответа."""
+
     action: Literal["noop", "kill", "update", "log"] = "noop"
     reason: Optional[str] = None
     status: Literal["success", "error"] = "success"
     session_id: Optional[str] = None
 
 
+class AccountingResponse(BaseResponse):
+    """Модель для ответа на запрос учета."""
+
+
+class ServiceCheckResponse(BaseResponse):
+    """Модель для ответа на запрос проверки сервисов."""
+
+
 class ServiceCategory(BaseModel):
-    """Категория сервиса."""
+    """Модель для категории сервиса."""
 
     timeto: Optional[int] = None
     speed: Optional[int] = None
+    contype: Optional[str] = None
 
 
 class ServiceCats(BaseModel):
-    """Категории сервисов."""
+    """Модель для категорий сервисов."""
 
     internet: Optional[ServiceCategory] = None
 
@@ -157,10 +179,15 @@ class LoginBase(BaseModel):
     auth_type: Optional[str] = Field(default="UNAUTH", description="Тип аутентификации")
     contract: Optional[str] = Field(default="", description="Контракт пользователя")
     onu_mac: Optional[str] = Field(default="", description="MAC-адрес ONU")
-    #    vlan: Optional[str] = Field(default="", description="VLAN")
+    mac: Optional[str] = Field(default="", description="MAC-адрес устройства")
+    speed: Optional[str] = Field(default="", description="Скорость услуги")
+    vlan: Optional[str] = Field(default="", description="VLAN")
     ip_addr: Optional[str] = Field(
-        default=None, description="IP-адрес из данных логина"
+        default=None,
+        description="IP-адрес из данных логина или ipAddress из device",
+        alias="ipAddress",
     )
+
     servicecats: Optional[ServiceCats] = None
 
     ipv6: Optional[str] = None
@@ -171,6 +198,8 @@ class LoginBase(BaseModel):
 
 
 class SessionData(BaseAccountingData, LoginBase):
+    """Модель для сессии с данными логина."""
+
     GMT: Optional[int] = 5
     Acct_Start_Time: Optional[datetime] = Field(None, alias="Acct-Start-Time")
     Acct_Stop_Time: Optional[datetime] = Field(None, alias="Acct-Stop-Time")
@@ -182,7 +211,42 @@ class SessionData(BaseAccountingData, LoginBase):
 class LoginSearchResult(LoginBase):
     """Модель для результата поиска логина."""
 
-    pass
+
+class VideoDeviceInfo(BaseModel):
+    """Модель для информации о видеокамере."""
+
+    host: Optional[str] = None
+    hostId: Optional[int] = None
+    ipAddress: Optional[str] = None
+    ip_addr: Optional[str] = None
+    type: Optional[str] = None
+    node: Optional[str] = None
+    nodeId: Optional[int] = None
+    group: Optional[str] = None
+    mac: Optional[str] = None
+    vlan: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    parentId: Optional[str] = None
+
+
+class VideoLoginSearchResult(VideoDeviceInfo):
+    """Модель для результата поиска видеокамеры с ключом Redis."""
+
+    login: Optional[str] = Field(None, description="Логин видеокамеры")
+    key: Optional[str] = Field(None, description="Ключ Redis для видеокамеры")
+    auth_type: Optional[str] = Field(default="VIDEO", description="Тип аутентификации")
+
+    @field_validator("nodeId", mode="before")
+    @classmethod
+    def parse_node_id(cls: type, value: Any) -> Optional[int]:
+        """Парсит nodeId, обрабатывая пустые строки как None."""
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
 
 
 class EnrichedSessionData(AccountingData, LoginBase):
@@ -221,7 +285,8 @@ class TrafficData(BaseModel):
         "ERX_IPv6_Acct_Output_Packets",
         mode="before",
     )
-    def ensure_non_negative(cls, value):
+    @classmethod
+    def ensure_non_negative(cls: type, value: Any) -> int:
         """Гарантирует, что значения трафика не отрицательные."""
         if value is None:
             return 0
@@ -234,6 +299,7 @@ class CorrectRequest(BaseModel):
     """Модель запроса CoA"""
 
     key: str
+    fields_changed: bool = Field(default=False, description="True если изменились поля mac vlan или onu_mac")
 
 
 class AuthRequest(BaseModel):
@@ -275,7 +341,8 @@ class AuthRequest(BaseModel):
     )
 
     @field_validator("Event_Timestamp", mode="before")
-    def parse_timestamp(cls, ts: str | datetime | dict) -> datetime:
+    @classmethod
+    def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
         return parse_event(ts)
 
@@ -299,6 +366,8 @@ class AuthDataLog(BaseModel):
 
 
 class AuthResponse(BaseModel):
+    """Модель для ответа авторизации RADIUS"""
+
     # Reply
     reply_framed_ip_address: Optional[str] = Field(
         None, alias="reply:Framed-IP-Address"
@@ -330,7 +399,27 @@ class AuthResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     def to_radius(self) -> Dict[str, Any]:
+        """Преобразовать в словарь для отправки в RADIUS"""
         return self.model_dump(by_alias=True, exclude_none=True)
+
+
+class SessionsSearchRequest(BaseModel):
+    """Модель для запроса поиска сессий по логину"""
+
+    login: str = Field('', description="Логин для поиска сессий")
+    onu_mac: str = Field('', description="MAC-адрес ONU")
+    mac: str = Field('', description="MAC-адрес устройства")
+    vlan: str = Field('', description="VLAN")
+
+
+class SessionsSearchResponse(BaseModel):
+    """Модель для ответа с результатами поиска сессий"""
+
+    sessions: List[SessionData] = Field(
+        default_factory=list, description="Найденные сессии"
+    )
+    total_count: int = Field(0, description="Общее количество найденных сессий")
+    login: str = Field(..., description="Логин, по которому выполнялся поиск")
 
 
 RABBIT_MODELS = TrafficData | SessionData | AuthDataLog
