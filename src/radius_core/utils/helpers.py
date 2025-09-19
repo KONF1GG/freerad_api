@@ -4,7 +4,7 @@
 
 import re
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
 from dateutil import parser
 logger = logging.getLogger(__name__)
@@ -124,3 +124,25 @@ def mac_from_hex(hex_var: str) -> str:
             else:
                 return template.format(body).upper()
     return ":".join(hex_var[i : i + 2] for i in range(2, 14, 2)).upper()
+
+
+def parse_service_name(service_session: str) -> Optional[str]:
+    """Парсит название услуги из ERX_Service_Session без скобок.
+
+    Примеры:
+    - INET-FREEDOM(100k) -> INET-FREEDOM
+    - INET-SOCIAL(323k) -> INET-SOCIAL
+    - INET-CHILDREN(2332k) -> INET-CHILDREN
+    - NOINET-NOMONEY -> NOINET-NOMONEY
+    """
+    try:
+        if not service_session:
+            return None
+
+        match = re.match(r"^([A-Z0-9-]+)", service_session)
+        if match:
+            return match.group(1)
+        return None
+    except (ValueError, AttributeError) as e:
+        logger.warning("Ошибка парсинга названия услуги из %s: %s", service_session, e)
+        return None

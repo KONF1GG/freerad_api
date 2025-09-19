@@ -7,6 +7,8 @@ import asyncio
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
 
+from radius_core.utils.helpers import parse_service_name
+
 from ...config import RADIUS_LOGIN_PREFIX
 from ..storage.search_operations import (
     find_sessions_by_login,
@@ -64,6 +66,9 @@ def _parse_service_speed(service_session: str) -> Optional[float]:
         return None
 
 
+
+
+
 async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[Dict[str, Any]]:
@@ -101,11 +106,13 @@ async def check_and_correct_service_state(
         if speed:
             try:
                 expected_speed_kb = int(float(speed) * 1100)
+                # Получаем текущее название услуги для деактивации
+                current_service_name = parse_service_name(session.ERX_Service_Session)
                 coa_attributes = {
                     "ERX-Service-Activate:1": "INET-FREEDOM("
                     + str(expected_speed_kb)
                     + "k)",
-                    "ERX-Service-Deactivate": "NOINET-NOMONEY",
+                    "ERX-Service-Deactivate": current_service_name or "NOINET-NOMONEY",
                 }
                 reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_kb}k"
                 logger.info(
@@ -132,10 +139,12 @@ async def check_and_correct_service_state(
             "Услуга для логина %s должна быть заблокирована, но роутер этого не сделал",
             login_name,
         )
+        # Получаем текущее название услуги для деактивации
+        current_service_name = parse_service_name(session.ERX_Service_Session)
         reason = f"Service expired for {login_name}, blocking access"
         coa_attributes = {
             "ERX-Service-Activate:1": "NOINET-NOMONEY()",
-            "ERX-Service-Deactivate": "INET-FREEDOM",
+            "ERX-Service-Deactivate": current_service_name or "INET-FREEDOM",
         }
         logger.info(
             "CoA SET: блокировка сервиса для сессии %s (%s), атрибуты: %s",
@@ -164,11 +173,16 @@ async def check_and_correct_service_state(
                             expected_speed_kb,
                             service_speed_mb,
                         )
+                        # Получаем текущее название услуги для деактивации
+                        current_service_name = parse_service_name(
+                            session.ERX_Service_Session
+                        )
                         coa_attributes = {
                             "ERX-Service-Activate:1": "INET-FREEDOM("
                             + str(expected_speed_kb)
                             + "k)",
-                            "ERX-Service-Deactivate": "INET-FREEDOM",
+                            "ERX-Service-Deactivate": current_service_name
+                            or "INET-FREEDOM",
                         }
                         reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
                         logger.info(
