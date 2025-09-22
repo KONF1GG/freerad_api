@@ -363,9 +363,9 @@ async def _save_auth_log(
             )
 
         log_entry = AuthDataLog(
-            login=login.login if login.login else None,
+            login=getattr(login, "login", None) if login else None,
             username=data.User_Name,
-            password=login.password if login.password else None,
+            password=getattr(login, "password", None) if login else None,
             callingstationid=data.Calling_Station_Id,
             nasipaddress=data.NAS_IP_Address,
             reply=reply_code,
