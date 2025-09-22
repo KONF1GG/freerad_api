@@ -239,6 +239,9 @@ class VideoLoginSearchResult(VideoDeviceInfo):
     login: Optional[str] = Field(None, description="Логин видеокамеры")
     key: Optional[str] = Field(None, description="Ключ Redis для видеокамеры")
     auth_type: Optional[str] = Field(default="VIDEO", description="Тип аутентификации")
+    radiusAttrs: Optional[Dict[str, Any]] = Field(
+        default=None, description="RADIUS атрибуты для переопределения в ответе"
+    )
 
     @field_validator("nodeId", mode="before")
     @classmethod
