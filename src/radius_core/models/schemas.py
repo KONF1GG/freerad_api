@@ -193,6 +193,9 @@ class LoginBase(BaseModel):
     ipv6: Optional[str] = None
     ipv6_pd: Optional[str] = None
     password: Optional[str] = None
+    radiusAttrs: Optional[Dict[str, Any]] = Field(
+        default=None, description="RADIUS атрибуты для переопределения в ответе"
+    )
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -299,7 +302,9 @@ class CorrectRequest(BaseModel):
     """Модель запроса CoA"""
 
     key: str
-    fields_changed: bool = Field(default=False, description="True если изменились поля mac vlan или onu_mac")
+    fields_changed: bool = Field(
+        default=False, description="True если изменились поля mac vlan или onu_mac"
+    )
 
 
 class AuthRequest(BaseModel):
@@ -386,6 +391,7 @@ class AuthDataLog(BaseModel):
     class Config:
         allow_population_by_field_name = True
 
+
 class AuthResponse(BaseModel):
     """Модель для ответа авторизации RADIUS"""
 
@@ -423,14 +429,27 @@ class AuthResponse(BaseModel):
         """Преобразовать в словарь для отправки в RADIUS"""
         return self.model_dump(by_alias=True, exclude_none=True)
 
+    def to_radius_with_additional_attrs(
+        self, additional_attrs: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Преобразовать в словарь для отправки в RADIUS с дополнительными атрибутами"""
+        base_response = self.to_radius()
+
+        if additional_attrs:
+            # Объединяем базовый ответ с дополнительными атрибутами
+            # additional_attrs переопределяют существующие поля
+            base_response.update(additional_attrs)
+
+        return base_response
+
 
 class SessionsSearchRequest(BaseModel):
     """Модель для запроса поиска сессий по логину"""
 
-    login: str = Field('', description="Логин для поиска сессий")
-    onu_mac: str = Field('', description="MAC-адрес ONU")
-    mac: str = Field('', description="MAC-адрес устройства")
-    vlan: str = Field('', description="VLAN")
+    login: str = Field("", description="Логин для поиска сессий")
+    onu_mac: str = Field("", description="MAC-адрес ONU")
+    mac: str = Field("", description="MAC-адрес устройства")
+    vlan: str = Field("", description="VLAN")
 
 
 class SessionsSearchResponse(BaseModel):

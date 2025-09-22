@@ -67,7 +67,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)",
                 )
             )
-            return auth_response.to_radius()
+            return auth_response.to_radius_with_additional_attrs(
+                login.radiusAttrs if login else None
+            )
 
         # Пользователь не найден
         if not login:
@@ -93,7 +95,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         f"User not found [{data.User_Name}], {mac_address}",
                     )
                 )
-                return auth_response.to_radius()
+                return auth_response.to_radius_with_additional_attrs(
+                    login.radiusAttrs if login else None
+                )
 
             # Обычная логика для остальных случаев
             auth_response = _build_noinet_novlan(
@@ -107,7 +111,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     f"User not found [{data.User_Name}], {mac_address}",
                 )
             )
-            return auth_response.to_radius()
+            return auth_response.to_radius_with_additional_attrs(
+                login.radiusAttrs if login else None
+            )
 
         # Обработка по типу авторизации
         if login.auth_type == "VIDEO":
@@ -140,7 +146,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         logger.info(
             "Авторизация завершена: %s для пользователя %s", reply_code, data.User_Name
         )
-        return auth_response.to_radius()
+        return auth_response.to_radius_with_additional_attrs(login.radiusAttrs)
 
     except HTTPException:
         raise
@@ -368,7 +374,6 @@ async def _save_auth_log(
             pool=getattr(data, "reply_framed_pool", None),
             agentremoteid=data.ADSL_Agent_Remote_Id,
             agentcircuitid=data.ADSL_Agent_Circuit_Id,
-
             nasportid=data.NAS_Port_Id,
             nasport=data.NAS_Port,
             service_type=data.Service_Type,
