@@ -353,6 +353,7 @@ class AuthDataLog(BaseModel):
     """Модель данных авторизации для логирования"""
 
     # Основные поля
+    login: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
     callingstationid: Optional[str] = None
