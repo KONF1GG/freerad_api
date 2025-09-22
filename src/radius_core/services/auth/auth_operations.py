@@ -44,9 +44,16 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         auth_response = AuthResponse()  # type: ignore
         nasportid = nasportid_parse(data.NAS_Port_Id)
 
+        # Вычисляем MAC адрес один раз для переиспользования
+        mac_address = mac_from_hex(data.ADSL_Agent_Remote_Id)
+
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
-        if nasportid["svlan"][0] == "5" and onu_mac == "" and data.Framed_Protocol != "PPP":
+        if (
+            nasportid["svlan"][0] == "5"
+            and onu_mac == ""
+            and data.Framed_Protocol != "PPP"
+        ):
             auth_response.reply_message = {
                 "value": "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)"
             }
@@ -74,7 +81,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     data.User_Name,
                 )
                 auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
+                    "value": f"User not found [{data.User_Name}], {mac_address}"
                 }
                 auth_response.control_auth_type = {"value": "Reject"}
 
@@ -83,18 +90,21 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         data,
                         login,
                         "Access-Reject",
-                        f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}",
+                        f"User not found [{data.User_Name}], {mac_address}",
                     )
                 )
                 return auth_response.to_radius()
 
             # Обычная логика для остальных случаев
             auth_response = _build_noinet_novlan(
-                auth_response, f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
+                auth_response, f"User not found [{data.User_Name}], {mac_address}"
             )
             asyncio.create_task(
                 _save_auth_log(
-                    data, login, "Access-Accept", f"User not found [{data.User_Name}], {mac_from_hex(data.ADSL_Agent_Remote_Id)}"
+                    data,
+                    login,
+                    "Access-Accept",
+                    f"User not found [{data.User_Name}], {mac_address}",
                 )
             )
             return auth_response.to_radius()
@@ -270,7 +280,7 @@ def _configure_regular_services(
             None,
         )
 
-        if contype == 'social':
+        if contype == "social":
             auth_response.reply_erx_service_activate = "INET-SOCIAL()"
         else:
             auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
@@ -357,6 +367,19 @@ async def _save_auth_log(
             pool=getattr(data, "reply_framed_pool", None),
             agentremoteid=data.ADSL_Agent_Remote_Id,
             agentcircuitid=data.ADSL_Agent_Circuit_Id,
+
+            nasportid=data.NAS_Port_Id,
+            nasport=data.NAS_Port,
+            service_type=data.Service_Type,
+            acct_session_id=data.Acct_Session_Id,
+            framed_protocol=data.Framed_Protocol,
+            chap_auth=1 if data.CHAP_Password else 0,
+            nas_identifier=data.NAS_Identifier,
+            nas_port_type=data.NAS_Port_Type,
+            framed_ip=data.Framed_IP_Address,
+            virtual_router=data.ERX_Virtual_Router_Name,
+            pppoe_description=data.ERX_Pppoe_Description,
+            dhcp_first_relay=data.ERX_DHCP_First_Relay_IPv4_Address,
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:

@@ -352,6 +352,7 @@ class AuthRequest(BaseModel):
 class AuthDataLog(BaseModel):
     """Модель данных авторизации для логирования"""
 
+    # Основные поля
     username: Optional[str] = None
     password: Optional[str] = None
     callingstationid: Optional[str] = None
@@ -359,11 +360,30 @@ class AuthDataLog(BaseModel):
     reply: Optional[str] = None  # Access-Accept / Access-Reject
     reason: Optional[str] = None  # текст из Reply-Message
     speed: Optional[float] = None  # исходная скорость услуги
+    uplink: Optional[float] = None  # uplink скорость
     pool: Optional[str] = None
     agentremoteid: Optional[str] = None
     agentcircuitid: Optional[str] = None
+
+    nasportid: Optional[str] = None
+    nasport: Optional[str] = None
+    vlan: Optional[str] = None
+    service_type: Optional[str] = None
+    acct_session_id: Optional[str] = None
+    framed_protocol: Optional[str] = None
+    chap_auth: Optional[bool] = None
+    nas_identifier: Optional[str] = None
+    nas_port_type: Optional[str] = None
+    framed_ip: Optional[str] = None
+    virtual_router: Optional[str] = None
+    pppoe_description: Optional[str] = None
+    dhcp_first_relay: Optional[str] = None
+
+    # Метка времени
     authdate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    class Config:
+        allow_population_by_field_name = True
 
 class AuthResponse(BaseModel):
     """Модель для ответа авторизации RADIUS"""
