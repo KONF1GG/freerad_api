@@ -43,12 +43,31 @@ async def _get_psiface_description(
             return ""
 
         raw = await execute_redis_command(redis, "JSON.GET", "psifaces")
-        if not raw:
+        if raw is None:
             return ""
 
-        if isinstance(raw, (bytes, bytearray)):
-            raw = raw.decode("utf-8", errors="ignore")
-        data = json.loads(raw)
+        # Приводим к dict вне зависимости от формата
+        if isinstance(raw, dict):
+            data = raw
+        else:
+            if isinstance(raw, (bytes, bytearray)):
+                raw = raw.decode("utf-8", errors="ignore")
+            if isinstance(raw, str):
+                try:
+                    data = json.loads(raw)
+                    # Некоторые клиенты отдают строку внутри строки -> пробуем второй раз
+                    if isinstance(data, str):
+                        data = json.loads(data)
+                except Exception:
+                    logger.warning(
+                        "psifaces: не удалось распарсить строку JSON, возвращаю пусто"
+                    )
+                    return ""
+            else:
+                logger.warning(
+                    "psifaces: неожиданный тип ответа: %s", type(raw).__name__
+                )
+                return ""
 
         for region_data in data.values():
             if not isinstance(region_data, dict):
@@ -85,6 +104,17 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         # Вычисляем MAC адрес один раз для переиспользования
         mac_address = mac_from_hex(data.ADSL_Agent_Remote_Id)
+
+        # Временная диагностика: логируем, что возвращает Redis по JSON.GET psifaces
+        try:
+            _raw_psifaces = await execute_redis_command(redis, "JSON.GET", "psifaces")
+            logger.warning(
+                "psifaces JSON.GET returned: %r (type=%s)",
+                _raw_psifaces,
+                type(_raw_psifaces).__name__,
+            )
+        except Exception as _e:
+            logger.error("psifaces JSON.GET failed: %s", _e, exc_info=True)
 
         # Рассчитать описание psiface для логирования
         psifaces_description = await _get_psiface_description(
