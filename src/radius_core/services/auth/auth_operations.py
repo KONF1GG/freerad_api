@@ -21,46 +21,11 @@ from ..storage.queue_operations import send_auth_log_to_queue
 from ...models import AuthRequest, AuthResponse, AuthDataLog
 from ...utils import nasportid_parse, mac_from_hex
 from ...core.metrics import track_function
+from ...clients.redis_client import execute_redis_command
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_psiface_description(
-    nasportid: Dict[str, Any], redis, nas_ip: str | None
-) -> str:
-    """Возвращает расшифровку psiface из Redis на основе NAS IP.
-
-    Ожидается структура в ключе "psifaces":
-    {
-      "region": { "nas_ips": ["ip1", ...], "values": {"ps10": "..."}}
-    }
-    """
-    try:
-        psiface = nasportid.get("psiface") or ""
-        if not psiface:
-            return ""
-
-        raw = await redis.get("psifaces")
-        if not raw:
-            return ""
-
-        data = json.loads(raw)
-
-        # Ищем ТОЛЬКО по региону, соответствующему NAS IP; если NAS IP нет — не ищем
-        if not nas_ip:
-            return ""
-
-        for region_data in data.values():
-            if not isinstance(region_data, dict):
-                continue
-            if nas_ip in region_data.get("nas_ips", []):
-                values = region_data.get("values", {})
-                return values.get(psiface, "") or ""
-
-        return ""
-    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as err:
-        logger.warning("Ошибка чтения psifaces из Redis: %s", err)
-        return ""
 
 
 @track_function("radius", "auth")
