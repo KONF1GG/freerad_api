@@ -385,6 +385,7 @@ class AuthDataLog(BaseModel):
     dhcp_first_relay: Optional[str] = None
     psifaces_description: Optional[str] = None
     onu_mac_remote_id: Optional[str] = None
+    auth_raw_pretty: Optional[str] = None
 
     # Метка времени
     authdate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

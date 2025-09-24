@@ -26,6 +26,19 @@ from ...clients.redis_client import execute_redis_command
 logger = logging.getLogger(__name__)
 
 
+def _format_auth_response_for_log(
+    auth_response: AuthResponse,
+    login: LoginSearchResult | VideoLoginSearchResult | None,
+) -> str | None:
+    try:
+        payload = auth_response.to_radius_with_additional_attrs(
+            login.radiusAttrs if login else None
+        )
+        return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    except Exception:
+        return None
+
+
 async def _get_psiface_description(
     nasportid: Dict[str, Any], redis, nas_ip: str | None
 ) -> str:
@@ -131,6 +144,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     "Access-Reject",
                     "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)",
                     psifaces_description=psifaces_description,
+                    auth_raw_pretty=_format_auth_response_for_log(auth_response, login),
                 )
             )
             return auth_response.to_radius_with_additional_attrs(
@@ -160,6 +174,9 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         "Access-Reject",
                         f"User not found [{data.User_Name}], {mac_address}",
                         psifaces_description=psifaces_description,
+                        auth_raw_pretty=_format_auth_response_for_log(
+                            auth_response, login
+                        ),
                     )
                 )
                 return auth_response.to_radius_with_additional_attrs(
@@ -177,6 +194,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     "Access-Accept",
                     f"User not found [{data.User_Name}], {mac_address}",
                     psifaces_description=psifaces_description,
+                    auth_raw_pretty=_format_auth_response_for_log(auth_response, login),
                 )
             )
             return auth_response.to_radius_with_additional_attrs(
@@ -205,6 +223,19 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             else None
         )
 
+        # Готовим "красивое" представление финального ответа для логов
+        try:
+            auth_raw_pretty = json.dumps(
+                auth_response.to_radius_with_additional_attrs(
+                    login.radiusAttrs if login else None
+                ),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        except Exception:
+            auth_raw_pretty = None
+
         asyncio.create_task(
             _save_auth_log(
                 data,
@@ -212,6 +243,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                 reply_code,
                 reason_text or "Authorization successful",
                 psifaces_description=psifaces_description,
+                auth_raw_pretty=auth_raw_pretty,
             )
         )
 
@@ -275,6 +307,7 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
+        auth_raw_pretty_local = _format_auth_response_for_log(auth_response, login)
         asyncio.create_task(
             _save_auth_log(
                 data,
@@ -284,6 +317,7 @@ async def _handle_regular_auth(
                 psifaces_description=await _get_psiface_description(
                     nasportid, redis, data.NAS_IP_Address
                 ),
+                auth_raw_pretty=auth_raw_pretty_local,
             )
         )
         raise HTTPException(
@@ -312,6 +346,7 @@ async def _handle_regular_auth(
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
+        auth_raw_pretty_local2 = _format_auth_response_for_log(auth_response, login)
         asyncio.create_task(
             _save_auth_log(
                 data,
@@ -321,6 +356,7 @@ async def _handle_regular_auth(
                 psifaces_description=await _get_psiface_description(
                     nasportid, redis, data.NAS_IP_Address
                 ),
+                auth_raw_pretty=auth_raw_pretty_local2,
             )
         )
         raise HTTPException(
@@ -430,6 +466,7 @@ async def _save_auth_log(
     reply_code: str,
     reason: str,
     psifaces_description: str | None = None,
+    auth_raw_pretty: str | None = None,
 ) -> None:
     """Сохраняет лог авторизации"""
     try:
@@ -466,6 +503,7 @@ async def _save_auth_log(
             onu_mac_remote_id=mac_from_hex(data.ADSL_Agent_Remote_Id)
             if data.ADSL_Agent_Remote_Id
             else None,
+            auth_raw_pretty=auth_raw_pretty,
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:
