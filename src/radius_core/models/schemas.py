@@ -383,6 +383,7 @@ class AuthDataLog(BaseModel):
     nas_port_type: Optional[str] = None
     pppoe_description: Optional[str] = None
     dhcp_first_relay: Optional[str] = None
+    psifaces_description: Optional[str] = None
 
     # Метка времени
     authdate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

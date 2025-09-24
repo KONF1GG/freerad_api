@@ -1,6 +1,7 @@
 """Операции авторизации RADIUS."""
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any, Dict
@@ -22,6 +23,44 @@ from ...utils import nasportid_parse, mac_from_hex
 from ...core.metrics import track_function
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_psiface_description(
+    nasportid: Dict[str, Any], redis, nas_ip: str | None
+) -> str:
+    """Возвращает расшифровку psiface из Redis на основе NAS IP.
+
+    Ожидается структура в ключе "psifaces":
+    {
+      "region": { "nas_ips": ["ip1", ...], "values": {"ps10": "..."}}
+    }
+    """
+    try:
+        psiface = nasportid.get("psiface") or ""
+        if not psiface:
+            return ""
+
+        raw = await redis.get("psifaces")
+        if not raw:
+            return ""
+
+        data = json.loads(raw)
+
+        # Ищем ТОЛЬКО по региону, соответствующему NAS IP; если NAS IP нет — не ищем
+        if not nas_ip:
+            return ""
+
+        for region_data in data.values():
+            if not isinstance(region_data, dict):
+                continue
+            if nas_ip in region_data.get("nas_ips", []):
+                values = region_data.get("values", {})
+                return values.get(psiface, "") or ""
+
+        return ""
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as err:
+        logger.warning("Ошибка чтения psifaces из Redis: %s", err)
+        return ""
 
 
 @track_function("radius", "auth")
@@ -47,6 +86,11 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         # Вычисляем MAC адрес один раз для переиспользования
         mac_address = mac_from_hex(data.ADSL_Agent_Remote_Id)
 
+        # Рассчитать описание psiface для логирования
+        psifaces_description = await _get_psiface_description(
+            nasportid, redis, data.NAS_IP_Address
+        )
+
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
         if (
@@ -65,6 +109,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     login,
                     "Access-Reject",
                     "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)",
+                    psifaces_description=psifaces_description,
                 )
             )
             return auth_response.to_radius_with_additional_attrs(
@@ -93,6 +138,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                         login,
                         "Access-Reject",
                         f"User not found [{data.User_Name}], {mac_address}",
+                        psifaces_description=psifaces_description,
                     )
                 )
                 return auth_response.to_radius_with_additional_attrs(
@@ -109,6 +155,7 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
                     login,
                     "Access-Accept",
                     f"User not found [{data.User_Name}], {mac_address}",
+                    psifaces_description=psifaces_description,
                 )
             )
             return auth_response.to_radius_with_additional_attrs(
@@ -139,7 +186,11 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         asyncio.create_task(
             _save_auth_log(
-                data, login, reply_code, reason_text or "Authorization successful"
+                data,
+                login,
+                reply_code,
+                reason_text or "Authorization successful",
+                psifaces_description=psifaces_description,
             )
         )
 
@@ -209,6 +260,9 @@ async def _handle_regular_auth(
                 login,
                 "Access-Reject",
                 f"Session limit exceeded [{data.User_Name} {login.login}]",
+                psifaces_description=await _get_psiface_description(
+                    nasportid, redis, data.NAS_IP_Address
+                ),
             )
         )
         raise HTTPException(
@@ -243,6 +297,9 @@ async def _handle_regular_auth(
                 login,
                 "Access-Reject",
                 f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+                psifaces_description=await _get_psiface_description(
+                    nasportid, redis, data.NAS_IP_Address
+                ),
             )
         )
         raise HTTPException(
@@ -351,6 +408,7 @@ async def _save_auth_log(
     login: LoginSearchResult | VideoLoginSearchResult | None,
     reply_code: str,
     reason: str,
+    psifaces_description: str | None = None,
 ) -> None:
     """Сохраняет лог авторизации"""
     try:
@@ -383,6 +441,7 @@ async def _save_auth_log(
             nas_port_type=data.NAS_Port_Type,
             pppoe_description=data.ERX_Pppoe_Description,
             dhcp_first_relay=data.ERX_DHCP_First_Relay_IPv4_Address,
+            psifaces_description=psifaces_description,
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:
