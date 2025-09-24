@@ -371,7 +371,6 @@ async def _save_auth_log(
             reply=reply_code,
             reason=reason,
             speed=float(speed_val) if speed_val not in (None, "") else None,
-            pool=getattr(data, "reply_framed_pool", None),
             agentremoteid=data.ADSL_Agent_Remote_Id,
             agentcircuitid=data.ADSL_Agent_Circuit_Id,
             nasportid=data.NAS_Port_Id,
@@ -382,8 +381,6 @@ async def _save_auth_log(
             chap_auth=1 if data.CHAP_Password else 0,
             nas_identifier=data.NAS_Identifier,
             nas_port_type=data.NAS_Port_Type,
-            framed_ip=data.Framed_IP_Address,
-            virtual_router=data.ERX_Virtual_Router_Name,
             pppoe_description=data.ERX_Pppoe_Description,
             dhcp_first_relay=data.ERX_DHCP_First_Relay_IPv4_Address,
         )

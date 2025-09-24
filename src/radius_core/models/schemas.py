@@ -369,8 +369,6 @@ class AuthDataLog(BaseModel):
     reply: Optional[str] = None  # Access-Accept / Access-Reject
     reason: Optional[str] = None  # текст из Reply-Message
     speed: Optional[float] = None  # исходная скорость услуги
-    uplink: Optional[float] = None  # uplink скорость
-    pool: Optional[str] = None
     agentremoteid: Optional[str] = None
     agentcircuitid: Optional[str] = None
 
@@ -383,8 +381,6 @@ class AuthDataLog(BaseModel):
     chap_auth: Optional[bool] = None
     nas_identifier: Optional[str] = None
     nas_port_type: Optional[str] = None
-    framed_ip: Optional[str] = None
-    virtual_router: Optional[str] = None
     pppoe_description: Optional[str] = None
     dhcp_first_relay: Optional[str] = None
 
