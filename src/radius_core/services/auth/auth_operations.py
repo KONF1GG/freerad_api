@@ -91,6 +91,8 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
             nasportid, redis, data.NAS_IP_Address
         )
 
+        logger.warning(f"psifaces_description: {psifaces_description}")
+
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
         if (
