@@ -26,6 +26,41 @@ from ...clients.redis_client import execute_redis_command
 logger = logging.getLogger(__name__)
 
 
+async def _get_psiface_description(
+    nasportid: Dict[str, Any], redis, nas_ip: str | None
+) -> str:
+    """Возвращает расшифровку psiface из Redis (JSON.GET psifaces) по региону NAS IP.
+
+    Ожидается структура:
+      {
+        "region": {"nas_ips": ["10.10.x.x"], "values": {"ps10": "..."}}
+      }
+    Если NAS IP не указан или регион не найден, возвращает пустую строку.
+    """
+    try:
+        psiface = nasportid.get("psiface") or ""
+        if not psiface or not nas_ip:
+            return ""
+
+        raw = await execute_redis_command(redis, "JSON.GET", "psifaces")
+        if not raw:
+            return ""
+
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="ignore")
+        data = json.loads(raw)
+
+        for region_data in data.values():
+            if not isinstance(region_data, dict):
+                continue
+            if nas_ip in region_data.get("nas_ips", []):
+                values = region_data.get("values", {})
+                return values.get(psiface, "") or ""
+
+        return ""
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as err:
+        logger.warning("Ошибка чтения psifaces из Redis: %s", err)
+        return ""
 
 
 @track_function("radius", "auth")
@@ -408,7 +443,7 @@ async def _save_auth_log(
             nas_port_type=data.NAS_Port_Type,
             pppoe_description=data.ERX_Pppoe_Description,
             dhcp_first_relay=data.ERX_DHCP_First_Relay_IPv4_Address,
-            psifaces_description=psifaces_description,
+            psifaces_description=(psifaces_description or None),
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:
