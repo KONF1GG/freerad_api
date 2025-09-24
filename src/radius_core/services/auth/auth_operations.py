@@ -105,17 +105,6 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         # Вычисляем MAC адрес один раз для переиспользования
         mac_address = mac_from_hex(data.ADSL_Agent_Remote_Id)
 
-        # Временная диагностика: логируем, что возвращает Redis по JSON.GET psifaces
-        try:
-            _raw_psifaces = await execute_redis_command(redis, "JSON.GET", "psifaces")
-            logger.warning(
-                "psifaces JSON.GET returned: %r (type=%s)",
-                _raw_psifaces,
-                type(_raw_psifaces).__name__,
-            )
-        except Exception as _e:
-            logger.error("psifaces JSON.GET failed: %s", _e, exc_info=True)
-
         # Рассчитать описание psiface для логирования
         psifaces_description = await _get_psiface_description(
             nasportid, redis, data.NAS_IP_Address
@@ -474,6 +463,9 @@ async def _save_auth_log(
             pppoe_description=data.ERX_Pppoe_Description,
             dhcp_first_relay=data.ERX_DHCP_First_Relay_IPv4_Address,
             psifaces_description=(psifaces_description or None),
+            onu_mac_remote_id=mac_from_hex(data.ADSL_Agent_Remote_Id)
+            if data.ADSL_Agent_Remote_Id
+            else None,
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:
