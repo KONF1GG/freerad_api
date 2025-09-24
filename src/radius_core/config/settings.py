@@ -38,7 +38,7 @@ RADIUS_LOGIN_PREFIX: str = "login:"
 RADIUS_INDEX_NAME: str = "idx:radius:login"
 RADIUS_INDEX_NAME_SESSION: str = "idx:radius:session"
 
-SESSION_LIMIT: int = 5
+SESSION_LIMIT: int = 15
 
 PROMETHEUS_MULTIPROC_DIR: str = os.getenv(
     "PROMETHEUS_MULTIPROC_DIR", "/app/prometheus_multiproc_dir"
