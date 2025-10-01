@@ -392,6 +392,11 @@ def _configure_regular_services(
 
     # Выставляем услугу
     if not service_should_be_blocked:
+        # Если скорость 0, устанавливаем 100
+        if speed is not None and float(speed) == 0:
+            speed = 100
+            logger.warning("Speed was 0, setting to 100 for login: %s", login.login)
+
         calc_speed = int(float(speed) * 1100) if speed is not None else 0
 
         contype = getattr(
