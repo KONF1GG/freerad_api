@@ -28,12 +28,5 @@ async def get_username_onu_mac_vlan_from_data(
     if data.NAS_Port_Id:
         nasportid = nasportid_parse(data.NAS_Port_Id)
         vlan = nasportid.get("cvlan") or nasportid.get("svlan", "")
-    
-    logger.warning(
-        f"NAS_Port_Id received: {data.NAS_Port_Id} (username: {getattr(data, 'User_Name', '')})"
-    )
-    logger.warning(
-        f"NAS_Port_Id parsed values: psiface={nasportid.get('psiface', '')}, svlan={nasportid.get('svlan', '')}, cvlan={nasportid.get('cvlan', '')}, selected vlan for logic={vlan}, username={data.User_Name}"
-    )
 
     return username, onu_mac, vlan, is_mac_username
