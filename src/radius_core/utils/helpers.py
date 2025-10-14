@@ -42,7 +42,7 @@ def now_str() -> str:
 def nasportid_parse(nasportid: str) -> Dict[str, str]:
     """Парсит nasportid в словарь"""
     m = re.match(
-        r"^(?P<psiface>ps\d+)\.\d+\:(?P<svlan>\d+)\-?(?P<cvlan>\d+)?$",
+        r"^(?P<psiface>\w+\d+)\.\d*\:?(?P<svlan>\d+)(?:\-(?P<cvlan>\d+))?$",
         nasportid,
     )
     return m.groupdict() if m else {"psiface": "", "svlan": "", "cvlan": ""}
