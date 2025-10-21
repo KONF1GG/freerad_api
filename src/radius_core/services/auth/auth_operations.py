@@ -293,17 +293,17 @@ async def _handle_regular_auth(
 ) -> AuthResponse:
     """Обрабатывает авторизацию обычных пользователей"""
     sessions = await find_sessions_by_login(login.login or "", redis, login)
-    session_count = len(sessions)
+    total_session_count = len(sessions)
 
     # Проверяем лимит сессий
-    if session_count >= SESSION_LIMIT:
+    if total_session_count >= SESSION_LIMIT:
         logger.warning(
             "Превышен лимит сессий (%s) для пользователя %s",
-            session_count,
+            total_session_count,
             login.login,
         )
         auth_response.reply_message = {
-            "value": f"Session limit exceeded: {session_count}, login: {login.login or ''}"
+            "value": f"Session limit exceeded: {total_session_count}, login: {login.login or ''}"
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
@@ -327,42 +327,46 @@ async def _handle_regular_auth(
 
     # Настраиваем сервисы
     auth_response = _configure_regular_services(
-        auth_response, login, nasportid, data, session_count
+        auth_response, login, nasportid, data, total_session_count
     )
 
     # Проверяем дублирующие сессии
     if data.Framed_IP_Address:
         auth_response = _handle_duplicate_session(auth_response, login)
 
-    # Проверяем статический IP
-    if session_count > 0 and login.ip_addr:
-        logger.warning(
-            "Превышен лимит для статического IP %s, пользователь %s",
-            login.ip_addr,
-            login.login,
-        )
-        auth_response.reply_message = {
-            "value": f"Static IP limit: {login.ip_addr}, login: {login.login or ''}"
-        }
-        auth_response.control_auth_type = {"value": "Reject"}
+    # Проверяем статический IP - разрешаем только если нет активных сессий с тем же IP
+    if login.ip_addr:
+        # Ищем сессии с тем же статическим IP
+        sessions_with_same_ip = [s for s in sessions if s.ip_addr == login.ip_addr]
 
-        auth_raw_pretty_local2 = _format_auth_response_for_log(auth_response, login)
-        asyncio.create_task(
-            _save_auth_log(
-                data,
-                login,
-                "Access-Reject",
-                f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
-                psifaces_description=await _get_psiface_description(
-                    nasportid, redis, data.NAS_IP_Address
-                ),
-                auth_raw_pretty=auth_raw_pretty_local2,
+        if sessions_with_same_ip:
+            logger.warning(
+                "Найдена активная сессия с тем же статическим IP %s, пользователь %s",
+                login.ip_addr,
+                login.login,
             )
-        )
-        raise HTTPException(
-            status_code=403,
-            detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
-        )
+            auth_response.reply_message = {
+                "value": f"Static IP limit: {login.ip_addr}, login: {login.login or ''}"
+            }
+            auth_response.control_auth_type = {"value": "Reject"}
+
+            auth_raw_pretty_local2 = _format_auth_response_for_log(auth_response, login)
+            asyncio.create_task(
+                _save_auth_log(
+                    data,
+                    login,
+                    "Access-Reject",
+                    f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+                    psifaces_description=await _get_psiface_description(
+                        nasportid, redis, data.NAS_IP_Address
+                    ),
+                    auth_raw_pretty=auth_raw_pretty_local2,
+                )
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+            )
 
     return auth_response
 
