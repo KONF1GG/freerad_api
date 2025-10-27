@@ -143,12 +143,19 @@ async def find_login_by_session(
         escaped_onu_mac = onu_mac.replace(":", r"\:")
 
         if is_mac_username:
-            search_query = f"@mac:{{{escaped_mac}}}"
+            # 1. Поиск точно по MAC+VLAN
+            search_query = f"@mac:{{{escaped_mac}}}@vlan:{{{escaped_vlan}}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
                 return result
 
-            # Поиск камеры по MAC
+            # 2. Поиск по MAC с vlan=0
+            search_query = f"@mac:{{{escaped_mac}}}@vlan:0"
+            result = await search_redis(redis, search_query, auth_type="MAC")
+            if result:
+                return result
+
+            # 3. Поиск камеры по MAC
             search_query = f"@mac:{{{escaped_mac}}}"
             result = await search_redis(
                 redis, search_query, auth_type="VIDEO", index="idx:device"
@@ -156,7 +163,7 @@ async def find_login_by_session(
             if result:
                 return result
 
-            # Поиск логина по onu_mac
+            # 4. Поиск логина по onu_mac
             if onu_mac:
                 search_query = f"@onu_mac:{{{escaped_onu_mac}}}"
                 result = await search_redis(redis, search_query, auth_type="OPT82")
