@@ -127,10 +127,12 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
+        # Исключение: если в Redis vlan=0, то игнорируем эту проверку
         if (
             nasportid["svlan"][0] == "5"
             and onu_mac == ""
             and data.Framed_Protocol != "PPP"
+            and not (login and getattr(login, "vlan", "") == "0")
         ):
             auth_response.reply_message = {
                 "value": "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)"
@@ -296,7 +298,8 @@ async def _handle_regular_auth(
     total_session_count = len(sessions)
 
     # Проверяем лимит сессий
-    if total_session_count >= SESSION_LIMIT:
+    # Исключение: если в Redis vlan=0, то игнорируем эту проверку
+    if total_session_count >= SESSION_LIMIT and getattr(login, "vlan", "") != "0":
         logger.warning(
             "Превышен лимит сессий (%s) для пользователя %s",
             total_session_count,
@@ -335,7 +338,8 @@ async def _handle_regular_auth(
         auth_response = _handle_duplicate_session(auth_response, login)
 
     # Проверяем статический IP - разрешаем только если нет активных сессий с тем же IP
-    if login.ip_addr:
+    # Исключение: если в Redis vlan=0, то игнорируем эту проверку
+    if login.ip_addr and getattr(login, "vlan", "") != "0":
         # Ищем сессии с тем же статическим IP
         sessions_with_same_ip = [s for s in sessions if s.ip_addr == login.ip_addr]
 

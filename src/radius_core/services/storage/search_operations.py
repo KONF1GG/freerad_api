@@ -3,18 +3,12 @@
 import json
 import logging
 import re
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Union
 from ...models import SessionData, LoginSearchResult
 from ...models.schemas import VideoLoginSearchResult
 from ...clients import execute_redis_command
 
-from ...utils import (
-    is_username_mac,
-    mac_from_username,
-    mac_from_hex,
-    nasportid_parse,
-    username_from_mac,
-)
+from ...utils import username_from_mac
 from ...config import RADIUS_LOGIN_PREFIX
 from ...core.metrics import track_function
 
@@ -149,8 +143,7 @@ async def find_login_by_session(
         escaped_onu_mac = onu_mac.replace(":", r"\:")
 
         if is_mac_username:
-            # Поиск логина по mac+vlan
-            search_query = f"@mac:{{{escaped_mac}}}@vlan:{{{escaped_vlan}}}"
+            search_query = f"@mac:{{{escaped_mac}}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
                 return result
@@ -172,6 +165,7 @@ async def find_login_by_session(
 
         else:
             static_match = re.match(r"^static-(.+)", username)
+            # Поиск по ip_addr и vlan
             if static_match:
                 ip = static_match.groups()[0]
                 escaped_ip = ip.replace(".", "\\.")
@@ -180,6 +174,7 @@ async def find_login_by_session(
                 if result:
                     return result
             else:
+                # Поиск по логину
                 login_key = f"{RADIUS_LOGIN_PREFIX}{username.strip().lower()}"
                 result = await search_redis(
                     redis,
