@@ -150,7 +150,7 @@ async def find_login_by_session(
                 return result
 
             # 2. Поиск по MAC с vlan=0
-            search_query = f"@mac:{{{escaped_mac}}}@vlan:0"
+            search_query = f"@mac:{{{escaped_mac}}}@vlan:{{0}}"
             result = await search_redis(redis, search_query, auth_type="MAC")
             if result:
                 return result
