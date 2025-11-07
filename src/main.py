@@ -6,10 +6,9 @@
 """
 # import uvicorn
 from radius_core.core import create_app
-import uvicorn
 
 app = create_app()
 
-uvicorn.run(app, host="0.0.0.0", port=8001)
+# uvicorn.run(app, host="0.0.0.0", port=8001)
 
 __all__ = ["app"]
