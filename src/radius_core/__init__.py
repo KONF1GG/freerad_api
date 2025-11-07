@@ -60,6 +60,9 @@ from .utils import (
     mac_from_hex,
     now_str,
     parse_event,
+    get_service_params_for_login,
+    get_turbo_multiplier,
+    is_iptv_enabled,
 )
 
 __all__ = [
@@ -107,6 +110,9 @@ __all__ = [
     "mac_from_username",
     "username_from_mac",
     "mac_from_hex",
-    "now_str",
+    "now_str", 
     "parse_event",
+    "get_service_params_for_login",
+    "get_turbo_multiplier",
+    "is_iptv_enabled",
 ]

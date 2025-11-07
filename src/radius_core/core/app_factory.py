@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # from prometheus_fastapi_instrumentator import Instrumentator
 
 from .app_lifecycle import lifecycle_manager
-from ..api import router
+from ..api import main_router as router
 
 
 def create_app() -> FastAPI:

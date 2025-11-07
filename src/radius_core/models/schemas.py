@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from ..utils import parse_event
-
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +74,7 @@ class BaseAccountingData(BaseModel):
     @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
+        from ..utils.helpers import parse_event
         return parse_event(ts)
 
     @field_validator(
@@ -158,18 +157,48 @@ class ServiceCheckResponse(BaseResponse):
     """Модель для ответа на запрос проверки сервисов."""
 
 
+class ServiceInterval(BaseModel):
+    """Модель для интервала услуги."""
+
+    begin: int = Field(..., description="Время начала интервала (timestamp)")
+    end: int = Field(..., description="Время окончания интервала (timestamp)")
+    name: str = Field(..., description="Название услуги")
+    id: str = Field(..., description="ID услуги")
+    
+    # Параметры интернета (для internet)
+    speed: Optional[int] = Field(None, description="Скорость интернета")
+    speed_night: Optional[int] = Field(None, description="Ночная скорость")
+    has_turbo: Optional[bool] = Field(None, description="Поддержка турбо")
+    turbo: Optional[int] = Field(None, description="Множитель турбо")
+    
+    # Параметры для testdrive
+    iptv: Optional[bool] = Field(None, description="IPTV для testdrive")
+    
+    # Другие параметры могут быть добавлены при необходимости
+
+
 class ServiceCategory(BaseModel):
     """Модель для категории сервиса."""
 
-    timeto: Optional[int] = None
-    speed: Optional[int] = None
-    contype: Optional[str] = None
+    timeto: Optional[int] = Field(None, description="Время окончания услуги")
+    intervals: Optional[List[ServiceInterval]] = Field(default_factory=list, description="Интервалы услуги")
+    prio: Optional[int] = Field(None, description="Приоритет услуги")
+    
+    # Параметры для internet
+    speed: Optional[int] = Field(None, description="Базовая скорость")
+    speed_night: Optional[int] = Field(None, description="Базовая ночная скорость")
+    contype: Optional[str] = Field(None, description="Тип подключения")
 
 
 class ServiceCats(BaseModel):
     """Модель для категорий сервисов."""
 
-    internet: Optional[ServiceCategory] = None
+    internet: Optional[ServiceCategory] = Field(None, description="Услуга интернета")
+    turbo: Optional[ServiceCategory] = Field(None, description="Турбо режим")
+    children: Optional[ServiceCategory] = Field(None, description="Детский/Безопасный интернет")
+    stopped: Optional[ServiceCategory] = Field(None, description="Временное отключение")
+    testdrive: Optional[ServiceCategory] = Field(None, description="Тест драйв")
+    gifts: Optional[ServiceCategory] = Field(None, description="Подарки")
 
 
 class LoginBase(BaseModel):
@@ -352,6 +381,7 @@ class AuthRequest(BaseModel):
     @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
+        from ..utils.helpers import parse_event
         return parse_event(ts)
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
