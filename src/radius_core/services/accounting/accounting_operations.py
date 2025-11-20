@@ -108,12 +108,19 @@ async def process_accounting(
             session_req.Acct_Status_Type == "Start"
             or session_req.Acct_Status_Type == "Interim-Update"
         ):
-            await asyncio.sleep(0.3)
-            logger.info(
-                "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
-                session_req.Acct_Status_Type,
-                session_req.Acct_Session_Id,
-            )
+            if session_req.Acct_Status_Type == "Start":
+                await asyncio.sleep(0.3)
+                logger.info(
+                    "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
+                    session_req.Acct_Status_Type,
+                    session_req.Acct_Session_Id,
+                )
+            else:
+                logger.info(
+                    "Добавление сервиса в основную сессию (%s) %s",
+                    session_req.Acct_Status_Type,
+                    session_req.Acct_Session_Id,
+                )
             asyncio.create_task(update_main_session_service(session_req, redis))
 
         # Обработка завершения сессии при изменении логина или его отсутствии
