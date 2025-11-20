@@ -104,7 +104,10 @@ async def process_accounting(
         session_req = process_traffic_data(session_req)
 
         # Обработка сервисных сессий
-        if is_service_session and session_req.Acct_Status_Type == "Start":
+        if is_service_session and (
+            session_req.Acct_Status_Type == "Start"
+            or session_req.Acct_Status_Type == "Interim-Update"
+        ):
             await asyncio.sleep(0.3)
             logger.info(
                 "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
