@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
 from dateutil import parser
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,8 +108,9 @@ PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
     "0x34383537353434334536": (18, "E0:E8:{}", ":", True),
     "0x34383537353434333144": (18, "50:5B:{}", ":", True),
     "0x34383537353434334146": (18, "D0:5F:{}", ":", True),
-    "0x3435344335343538": (18, "ELTX{}", "", True)
+    "0x3435344335343538": (18, "ELTX{}", "", True),
 }
+
 
 def mac_from_hex(hex_var: str) -> str:
     """Преобразует hex в MAC-адрес"""
@@ -146,3 +148,33 @@ def parse_service_name(service_session: str) -> Optional[str]:
     except (ValueError, AttributeError) as e:
         logger.warning("Ошибка парсинга названия услуги из %s: %s", service_session, e)
         return None
+
+
+def mac_to_ipv6_ula(mac_addr: str) -> Optional[str]:
+    """Преобразует MAC-адрес в IPv6 ULA адрес.
+
+    Преобразует MAC-адрес в IPv6 ULA адрес формата "fd00:xxxx:xxxx:xxxx::1/128".
+
+    Args:
+        mac_addr: MAC-адрес в любом формате ("04bf.6d64.ee07", "04:bf:6d:64:ee:07" и т.д.)
+
+    Returns:
+        IPv6 ULA адрес в формате "fd00:xxxx:xxxx:xxxx::1/128" или None если MAC невалидный
+
+    Пример:
+        >>> mac_to_ipv6_ula("04bf.6d64.ee07")
+        'fd00:04bf:6d64:ee07::1/128'
+    """
+    if not mac_addr:
+        return None
+
+    # Очищаем MAC адрес от разделителей
+    mac_clean = mac_addr.replace(":", "").replace("-", "").replace(".", "").lower()
+
+    # Проверяем, что это валидное 16-ричное значение длиной 12 символов
+    if not re.match(r"^[0-9a-f]{12}$", mac_clean):
+        return None
+
+    # Разбиваем на сегменты по 4 символа и добавляем префикс/суффикс
+    segments = [mac_clean[i : i + 4] for i in range(0, 12, 4)]
+    return f"fd00:{':'.join(segments)}::1/128"
