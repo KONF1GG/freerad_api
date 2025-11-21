@@ -177,4 +177,8 @@ def mac_to_ipv6_ula(mac_addr: str) -> Optional[str]:
 
     # Разбиваем на сегменты по 4 символа и добавляем префикс/суффикс
     segments = [mac_clean[i : i + 4] for i in range(0, 12, 4)]
-    return f"fd00:{':'.join(segments)}::1/128"
+    return f"fd00::{':'.join(segments)}:1/128"
+
+
+
+print(mac_to_ipv6_ula('d4bf.7f52.e8dc'))
