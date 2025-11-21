@@ -410,6 +410,9 @@ class AuthResponse(BaseModel):
     reply_delegated_ipv6_prefix: Optional[str] = Field(
         None, alias="reply:Delegated-IPv6-Prefix"
     )
+    reply_delegated_pool_name: Optional[str] = Field(
+        None, alias="reply:Delegated-IPv6-Pool-Name"
+    )
     reply_framed_route: Optional[str] = Field(None, alias="reply:Framed-Route")
     reply_erx_service_activate: Optional[str] = Field(
         None, alias="reply:ERX-Service-Activate:1"
