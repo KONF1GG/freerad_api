@@ -438,6 +438,8 @@ def _configure_regular_services(
     ):
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
+    else:
+        auth_response.reply_framed_ipv6_pool = "v6-ula-pool"
 
     if login.login == "znvpn7132":
         auth_response.reply_framed_route = "80.244.41.248/29"
