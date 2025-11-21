@@ -150,20 +150,22 @@ def parse_service_name(service_session: str) -> Optional[str]:
         return None
 
 
-def mac_to_ipv6_ula(mac_addr: str) -> Optional[str]:
-    """Преобразует MAC-адрес в IPv6 ULA адрес.
+def mac_to_ipv6_ula(mac_addr: str) -> Optional[Tuple[str, str]]:
+    """Преобразует MAC-адрес в IPv6 ULA адреса.
 
-    Преобразует MAC-адрес в IPv6 ULA адрес формата "fd00:xxxx:xxxx:xxxx::1/128".
+    Преобразует MAC-адрес в два IPv6 ULA адреса:
+    - framed-ipv6-prefix: "fd00::xxxx:xxxx:xxxx:1/128"
+    - delegated-ipv6-prefix: "fd00:deed:xxxx:xxxx::/64"
 
     Args:
-        mac_addr: MAC-адрес в любом формате ("04bf.6d64.ee07", "04:bf:6d:64:ee:07" и т.д.)
+        mac_addr: MAC-адрес в любом формате ("d4bf.7f52.e8dc", "04:bf:6d:64:ee:07" и т.д.)
 
     Returns:
-        IPv6 ULA адрес в формате "fd00:xxxx:xxxx:xxxx::1/128" или None если MAC невалидный
+        Кортеж (framed-ipv6-prefix, delegated-ipv6-prefix) или None если MAC невалидный
 
     Пример:
-        >>> mac_to_ipv6_ula("04bf.6d64.ee07")
-        'fd00:04bf:6d64:ee07::1/128'
+        >>> mac_to_ipv6_ula("d4bf.7f52.e8dc")
+        ('fd00::d4bf:7f52:e8dc:1/128', 'fd00:deed:7f52:e8dc::/64')
     """
     if not mac_addr:
         return None
@@ -175,10 +177,13 @@ def mac_to_ipv6_ula(mac_addr: str) -> Optional[str]:
     if not re.match(r"^[0-9a-f]{12}$", mac_clean):
         return None
 
-    # Разбиваем на сегменты по 4 символа и добавляем префикс/суффикс
+    # Разбиваем на сегменты по 4 символа
     segments = [mac_clean[i : i + 4] for i in range(0, 12, 4)]
-    return f"fd00::{':'.join(segments)}:1/128"
 
+    # framed-ipv6-prefix: используем все сегменты MAC
+    framed = f"fd00::{':'.join(segments)}:1/128"
 
+    # delegated-ipv6-prefix: заменяем первый сегмент на "deed", используем последние 2 сегмента
+    delegated = f"fd00:deed:{segments[1]}:{segments[2]}::/64"
 
-print(mac_to_ipv6_ula('d4bf.7f52.e8dc'))
+    return (framed, delegated)
