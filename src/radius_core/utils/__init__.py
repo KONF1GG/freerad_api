@@ -8,6 +8,7 @@ from .helpers import (
     mac_from_hex,
     now_str,
     parse_event,
+    mac_to_ipv6_ula,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "mac_from_hex",
     "now_str",
     "parse_event",
+    "mac_to_ipv6_ula",
 ]
