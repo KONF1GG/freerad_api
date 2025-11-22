@@ -438,14 +438,14 @@ def _configure_regular_services(
     ):
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
-    else:
+    # else:
         # Преобразуем MAC адрес в IPv6 ULA адрес
-        if data.ERX_Dhcp_Mac_Addr:
-            ipv6_result = mac_to_ipv6_ula(data.ERX_Dhcp_Mac_Addr)
-            if ipv6_result:
-                ipv6_ula, ipv6_ula_delegeted = ipv6_result
-                auth_response.reply_framed_ipv6_prefix = ipv6_ula
-                auth_response.reply_delegated_ipv6_prefix = ipv6_ula_delegeted
+        # if data.ERX_Dhcp_Mac_Addr:
+        #     ipv6_result = mac_to_ipv6_ula(data.ERX_Dhcp_Mac_Addr)
+        #     if ipv6_result:
+        #         ipv6_ula, ipv6_ula_delegeted = ipv6_result
+        #         auth_response.reply_framed_ipv6_prefix = ipv6_ula
+        #         auth_response.reply_delegated_ipv6_prefix = ipv6_ula_delegeted
         # auth_response.reply_framed_ipv6_pool = "v6-ula-pool"
         # auth_response.reply_delegated_pool_name = "v6-pd-ula-pool"
 
