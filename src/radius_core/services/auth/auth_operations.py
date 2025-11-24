@@ -3,16 +3,17 @@
 import asyncio
 import json
 import logging
-import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
 from ...config.settings import SESSION_LIMIT
 from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
+from ...utils.service_intervals import (
+    get_service_params_for_login,
+    get_turbo_multiplier,
+)
 
 from ...models.schemas import LoginSearchResult, VideoLoginSearchResult
-from ..monitoring.service_utils import check_service_expiry
-
 from ..storage.search_operations import (
     find_login_by_session,
     find_sessions_by_login,
@@ -377,41 +378,34 @@ async def _handle_regular_auth(
 
 def _configure_regular_services(
     auth_response: AuthResponse,
-    login: Any,
+    login: LoginSearchResult,
     nasportid: Dict[str, Any],
     data: AuthRequest,
     session_count: int,
 ) -> AuthResponse:
     """Настраивает сервисы для обычных пользователей"""
-    timeto = getattr(
-        getattr(getattr(login, "servicecats", None), "internet", None),
-        "timeto",
-        None,
-    )
-    speed = getattr(
-        getattr(getattr(login, "servicecats", None), "internet", None),
-        "speed",
-        None,
-    )
 
-    # Проверяем срок действия услуги
-    now_timestamp = time.time()
-    service_should_be_blocked = check_service_expiry(timeto, now_timestamp)
+    # Получаем параметры услуги с учетом новой структуры интервалов
+    speed, speed_night, contype, service_should_be_blocked = (
+        get_service_params_for_login(login)
+    )
 
     # Выставляем услугу
     if not service_should_be_blocked:
-        # Если скорость 0, устанавливаем 100
-        # if speed is not None and float(speed) == 0:
-        #     speed = 100
-        #     logger.warning("Speed was 0, setting to 100 for login: %s", login.login)
-
         calc_speed = int(float(speed) * 1100) if speed is not None else 0
 
-        contype = getattr(
-            getattr(getattr(login, "servicecats", None), "internet", None),
-            "contype",
-            None,
-        )
+        # Проверяем турбо режим
+        servicecats = getattr(login, "servicecats", None)
+        turbo_multiplier = get_turbo_multiplier(servicecats) if servicecats else None
+
+        if turbo_multiplier and turbo_multiplier > 1:
+            calc_speed = int(calc_speed * turbo_multiplier)
+            logger.info(
+                "Применен турбо режим x%s для логина %s, скорость: %sk",
+                turbo_multiplier,
+                login.login,
+                calc_speed,
+            )
 
         if contype == "social":
             auth_response.reply_erx_service_activate = "INET-SOCIAL()"

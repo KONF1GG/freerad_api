@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
 
-from radius_core.services.monitoring.service_checker import (
+from ..monitoring.service_checker import (
     check_and_correct_service_state,
 )
 from ...utils.data_prepare import get_username_onu_mac_vlan_from_data

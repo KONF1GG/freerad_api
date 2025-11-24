@@ -7,7 +7,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
 
-from radius_core.utils.helpers import parse_service_name
+from ...utils.helpers import parse_service_name
 
 from ...config import RADIUS_LOGIN_PREFIX
 from ..storage.search_operations import (
@@ -26,23 +26,14 @@ logger = logging.getLogger(__name__)
 def _get_service_params(
     login_data: LoginSearchResult,
 ) -> tuple[Optional[int], Optional[str]]:
-    """Извлекает параметры услуги из данных логина."""
-    servicecats = getattr(login_data, "servicecats", None)
-    if not servicecats:
-        return None, None
-
-    internet = getattr(servicecats, "internet", None)
-    if not internet:
-        return None, None
-
-    timeto = getattr(internet, "timeto", None)
-    speed = getattr(internet, "speed", None)
-
-    # Если speed в login_data не пустой, используем его
-    if login_data.speed and login_data.speed != "0":
-        speed = login_data.speed
-
-    return timeto, speed
+    """Извлекает параметры услуги из данных логина с учетом новой структуры интервалов."""
+    from ...utils.service_intervals import get_service_params_for_login
+    
+    speed, speed_night, contype, service_should_be_blocked = get_service_params_for_login(login_data)
+    
+    # Возвращаем None для timeto, так как теперь логика основана на интервалах
+    # service_should_be_blocked будет проверяться через новую логику
+    return None, str(speed) if speed is not None else None
 
 
 def _parse_service_speed(service_session: str) -> Optional[float]:
@@ -73,6 +64,8 @@ async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[Dict[str, Any]]:
     """Проверить и скорректировать состояние сервиса"""
+    from ...utils.service_intervals import get_service_params_for_login, get_turbo_multiplier
+    
     logger.info(
         "Проверка и корректировка состояния сервиса для сессии %s (%s)",
         session.Acct_Unique_Session_Id,
@@ -82,12 +75,8 @@ async def check_and_correct_service_state(
     if not session.ERX_Service_Session:
         return None
 
-    # Получаем параметры услуги
-    timeto, speed = _get_service_params(login_data)
-
-    # Проверяем срок действия услуги
-    now_timestamp = time.time()
-    service_should_be_blocked = check_service_expiry(timeto, now_timestamp)
+    # Получаем параметры услуги с учетом новой структуры
+    speed, speed_night, contype, service_should_be_blocked = get_service_params_for_login(login_data)
 
     # Анализируем состояние с роутера
     router_says_blocked = "NOINET-NOMONEY" in session.ERX_Service_Session
@@ -106,6 +95,16 @@ async def check_and_correct_service_state(
         if speed:
             try:
                 expected_speed_kb = int(float(speed) * 1100)
+                
+                # Проверяем турбо режим
+                servicecats = getattr(login_data, "servicecats", None)
+                turbo_multiplier = get_turbo_multiplier(servicecats) if servicecats else None
+                
+                if turbo_multiplier and turbo_multiplier > 1:
+                    expected_speed_kb = int(expected_speed_kb * turbo_multiplier)
+                    logger.info("Применен турбо режим x%s для разблокировки логина %s", 
+                               turbo_multiplier, login_name)
+                
                 # Получаем текущее название услуги для деактивации
                 current_service_name = parse_service_name(session.ERX_Service_Session)
                 coa_attributes = {
@@ -165,6 +164,13 @@ async def check_and_correct_service_state(
             if service_speed_mb is not None:
                 try:
                     expected_speed_kb = int(float(speed) * 1100)
+                    
+                    # Проверяем турбо режим
+                    servicecats = getattr(login_data, "servicecats", None)
+                    turbo_multiplier = get_turbo_multiplier(servicecats) if servicecats else None
+                    
+                    if turbo_multiplier and turbo_multiplier > 1:
+                        expected_speed_kb = int(expected_speed_kb * turbo_multiplier)
 
                     if abs(service_speed_mb - expected_speed_kb / 1000) >= 0.01:
                         logger.warning(
@@ -185,6 +191,8 @@ async def check_and_correct_service_state(
                             or "INET-FREEDOM",
                         }
                         reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
+                        if turbo_multiplier and turbo_multiplier > 1:
+                            reason += f" (with turbo x{turbo_multiplier})"
                         logger.info(
                             "CoA SET: обновление скорости для сессии %s (%s), атрибуты: %s",
                             session.Acct_Unique_Session_Id,
