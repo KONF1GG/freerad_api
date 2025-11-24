@@ -4,6 +4,7 @@
 
 import re
 import logging
+import secrets
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
 from dateutil import parser
@@ -185,5 +186,33 @@ def mac_to_ipv6_ula(mac_addr: str) -> Optional[Tuple[str, str]]:
 
     # delegated-ipv6-prefix: заменяем первый сегмент на "deed", используем последние 2 сегмента
     delegated = f"fd00:deed:{segments[1]}:{segments[2]}::/64"
+
+    return (framed, delegated)
+
+
+def generate_random_ipv6_ula() -> Tuple[str, str]:
+    """Генерирует случайные IPv6 ULA адреса.
+
+    Генерирует два случайных IPv6 ULA адреса:
+    - framed-ipv6-prefix: "fd00::xxxx:xxxx:xxxx:1/128" (где xxxx:xxxx:xxxx - случайные значения)
+    - delegated-ipv6-prefix: "fd00:deed:xxxx:xxxx::/64" (где xxxx:xxxx - те же случайные значения)
+
+    Returns:
+        Кортеж (framed-ipv6-prefix, delegated-ipv6-prefix)
+
+    Пример:
+        >>> generate_random_ipv6_ula()
+        ('fd00::d4bf:7f52:e8dc:1/128', 'fd00:deed:7f52:e8dc::/64')
+    """
+    # Генерируем 3 случайных 16-битных сегмента (по 4 hex символа каждый)
+    segment1 = f"{secrets.randbelow(65536):04x}"  # 0x0000 - 0xFFFF
+    segment2 = f"{secrets.randbelow(65536):04x}"
+    segment3 = f"{secrets.randbelow(65536):04x}"
+
+    # framed-ipv6-prefix: используем все три сегмента
+    framed = f"fd00::{segment1}:{segment2}:{segment3}:1/128"
+
+    # delegated-ipv6-prefix: используем последние два сегмента с префиксом "deed"
+    delegated = f"fd00:deed:{segment2}:{segment3}::/64"
 
     return (framed, delegated)

@@ -9,6 +9,7 @@ from .helpers import (
     now_str,
     parse_event,
     mac_to_ipv6_ula,
+    generate_random_ipv6_ula,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "now_str",
     "parse_event",
     "mac_to_ipv6_ula",
+    "generate_random_ipv6_ula",
 ]
