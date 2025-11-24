@@ -12,6 +12,8 @@ from .helpers import (
     mac_from_hex,
     now_str,
     parse_event,
+    mac_to_ipv6_ula,
+    generate_random_ipv6_ula,
 )
 
 from .service_intervals import (
@@ -29,6 +31,8 @@ __all__ = [
     "mac_from_hex",
     "now_str",
     "parse_event",
+    "mac_to_ipv6_ula",
+    "generate_random_ipv6_ula",
     "get_service_params_for_login",
     "get_turbo_multiplier",
     "is_iptv_enabled",

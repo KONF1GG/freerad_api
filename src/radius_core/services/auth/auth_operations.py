@@ -20,7 +20,7 @@ from ..storage.search_operations import (
 )
 from ..storage.queue_operations import send_auth_log_to_queue
 from ...models import AuthRequest, AuthResponse, AuthDataLog
-from ...utils import nasportid_parse, mac_from_hex
+from ...utils import nasportid_parse, mac_from_hex, generate_random_ipv6_ula
 from ...core.metrics import track_function
 from ...clients.redis_client import execute_redis_command
 
@@ -432,6 +432,11 @@ def _configure_regular_services(
     ):
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
+    else:
+        # Генерируем случайные IPv6 адреса
+        ipv6_ula, ipv6_ula_delegeted = generate_random_ipv6_ula()
+        auth_response.reply_framed_ipv6_prefix = ipv6_ula
+        auth_response.reply_delegated_ipv6_prefix = ipv6_ula_delegeted
 
     if login.login == "znvpn7132":
         auth_response.reply_framed_route = "80.244.41.248/29"
