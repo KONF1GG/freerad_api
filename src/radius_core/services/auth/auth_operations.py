@@ -10,7 +10,6 @@ from ...config.settings import SESSION_LIMIT
 from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
 from ...utils.service_intervals import (
     get_service_params_for_login,
-    get_turbo_multiplier,
 )
 
 from ...models.schemas import LoginSearchResult, VideoLoginSearchResult
@@ -386,7 +385,7 @@ def _configure_regular_services(
     """Настраивает сервисы для обычных пользователей"""
 
     # Получаем параметры услуги с учетом новой структуры интервалов
-    speed, speed_night, contype, service_should_be_blocked = (
+    speed, speed_night, contype, service_should_be_blocked, service_name = (
         get_service_params_for_login(login)
     )
 
@@ -394,23 +393,12 @@ def _configure_regular_services(
     if not service_should_be_blocked:
         calc_speed = int(float(speed) * 1100) if speed is not None else 0
 
-        # Проверяем турбо режим
-        servicecats = getattr(login, "servicecats", None)
-        turbo_multiplier = get_turbo_multiplier(servicecats) if servicecats else None
-
-        if turbo_multiplier and turbo_multiplier > 1:
-            calc_speed = int(calc_speed * turbo_multiplier)
-            logger.info(
-                "Применен турбо режим x%s для логина %s, скорость: %sk",
-                turbo_multiplier,
-                login.login,
-                calc_speed,
-            )
-
         if contype == "social":
+            # Для social используем INET-SOCIAL (этого имени в Redis пока нет)
             auth_response.reply_erx_service_activate = "INET-SOCIAL()"
         else:
-            auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
+            # Используем имя сервиса из активного интервала (name из Redis)
+            auth_response.reply_erx_service_activate = f"{service_name}({calc_speed}k)"
 
     else:
         auth_response.reply_erx_service_activate = "NOINET-NOMONEY()"

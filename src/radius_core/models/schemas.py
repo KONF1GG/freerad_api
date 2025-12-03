@@ -186,6 +186,7 @@ class ServiceCategory(BaseModel):
     intervals: Optional[List[ServiceInterval]] = Field(
         default_factory=list, description="Интервалы услуги"
     )
+    name: Optional[str] = Field(None, description="Название услуги")
     prio: Optional[int] = Field(None, description="Приоритет услуги")
 
     # Параметры для internet

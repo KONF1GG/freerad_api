@@ -18,7 +18,6 @@ from .helpers import (
 
 from .service_intervals import (
     get_service_params_for_login,
-    get_turbo_multiplier,
     is_iptv_enabled,
 )
 
@@ -26,7 +25,7 @@ __all__ = [
     "get_username_onu_mac_vlan_from_data",
     "nasportid_parse",
     "is_username_mac",
-    "mac_from_username", 
+    "mac_from_username",
     "username_from_mac",
     "mac_from_hex",
     "now_str",
@@ -34,6 +33,5 @@ __all__ = [
     "mac_to_ipv6_ula",
     "generate_random_ipv6_ula",
     "get_service_params_for_login",
-    "get_turbo_multiplier",
     "is_iptv_enabled",
 ]
