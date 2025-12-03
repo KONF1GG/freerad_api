@@ -13,7 +13,6 @@ from ..core.dependencies import RedisDependency
 from ..config import RADIUS_LOGIN_PREFIX
 from ..utils.service_intervals import (
     get_service_params_for_login,
-    get_turbo_multiplier,
     is_iptv_enabled,
     get_highest_priority_active_service,
     get_effective_speed_params,
@@ -68,61 +67,50 @@ async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
 
         # Анализ servicecats
         servicecats = getattr(login_data, "servicecats", None)
-        turbo_multiplier = None
         iptv_enabled = False
 
         if servicecats:
             servicecats_analysis = _analyze_servicecats(servicecats, current_time)
-            turbo_multiplier = _safe_float(
-                servicecats_analysis.get("turbo_multiplier"), "turbo_multiplier"
-            )
             iptv_enabled = bool(servicecats_analysis.get("iptv_enabled", False))
             result["servicecats_analysis"] = servicecats_analysis
         else:
             result["servicecats_analysis"] = {
                 "has_servicecats": False,
-                "legacy_speed": getattr(login_data, "speed", None),
-                "message": "Используется legacy структура (поле speed)",
+                "legacy_speed_field": getattr(login_data, "speed", None),
+                "message": "No servicecats found - will be blocked",
             }
 
         # Основные параметры через новую логику
-        speed, speed_night, contype, should_be_blocked = get_service_params_for_login(
-            login_data
+        speed, speed_night, contype, should_be_blocked, service_name = (
+            get_service_params_for_login(login_data)
         )
 
-        base_speed = _safe_int(speed, "speed")
-        base_speed_night = _safe_int(speed_night, "speed_night")
+        final_speed = _safe_int(speed, "speed")
+        final_speed_night = _safe_int(speed_night, "speed_night")
 
         result["new_logic_results"] = {
-            "speed": base_speed,
-            "speed_night": base_speed_night,
+            "speed": final_speed,
+            "speed_night": final_speed_night,
             "contype": contype,
             "should_be_blocked": should_be_blocked,
-            "turbo_multiplier": turbo_multiplier,
+            "service_name": service_name,
             "iptv_enabled": iptv_enabled,
         }
 
-        # Расчет финальной скорости с турбо
-        final_speed = base_speed
-        if (
-            final_speed is not None
-            and turbo_multiplier is not None
-            and turbo_multiplier > 1
-        ):
-            final_speed = int(final_speed * turbo_multiplier)
+        # Скорость берется напрямую из интервалов
 
         result["radius_config"] = {
-            "base_speed_mbps": base_speed,
-            "turbo_multiplier": turbo_multiplier,
             "final_speed_mbps": final_speed,
+            "final_speed_night_mbps": final_speed_night,
             "final_speed_kb": _mbps_to_kbps(final_speed),
             "service_activation": _get_service_activation_string(
-                final_speed, contype, should_be_blocked
+                final_speed, contype, should_be_blocked, service_name
             ),
             "should_be_blocked": should_be_blocked,
+            "note": "Speed is taken directly from intervals (turbo already included)",
         }
 
-        # Сравнение со старой логикой (legacy speed)
+        # Сравнение со старой логикой (legacy speed field)
         legacy_speed = getattr(login_data, "speed", None)
         legacy_speed_int = _safe_int(legacy_speed, "legacy_speed")
         if legacy_speed_int and legacy_speed_int != 0:
@@ -133,11 +121,11 @@ async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
                 "legacy_speed_kb": legacy_speed_kb,
                 "legacy_activation": f"INET-FREEDOM({legacy_speed_kb}k)",
                 "speed_changed": (
-                    base_speed != legacy_speed_int if base_speed is not None else True
+                    final_speed != legacy_speed_int if final_speed is not None else True
                 ),
                 "new_vs_legacy": {
-                    "new_speed": final_speed,
-                    "legacy_speed": legacy_speed_int,
+                    "new_speed_from_intervals": final_speed,
+                    "old_legacy_speed_field": legacy_speed_int,
                     "difference": (
                         final_speed - legacy_speed_int
                         if final_speed is not None
@@ -169,11 +157,17 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
         return {"has_servicecats": False, "message": "servicecats отсутствует"}
 
     services: Dict[str, Any] = {}
-    service_names = ["internet", "turbo", "children", "stopped", "testdrive", "gifts"]
 
-    for service_name in service_names:
-        service = getattr(servicecats, service_name, None)
-        if not service:
+    # Динамически проходимся по всем полям servicecats
+    for field_name in dir(servicecats):
+        # Пропускаем служебные поля
+        if field_name.startswith("_") or field_name in ["model_config", "model_fields"]:
+            continue
+
+        service = getattr(servicecats, field_name, None)
+
+        # Проверяем что это объект категории услуги
+        if not service or not hasattr(service, "intervals"):
             continue
 
         intervals = []
@@ -195,10 +189,13 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
                 for interval in service.intervals
             )
 
-        services[service_name] = {
+        services[field_name] = {
+            "name": getattr(service, "name", None),
             "prio": getattr(service, "prio", None),
-            "speed": getattr(service, "speed", None),
-            "speed_night": getattr(service, "speed_night", None),
+            "base_speed_legacy": getattr(service, "speed", None),  # Not used anymore
+            "base_speed_night_legacy": getattr(
+                service, "speed_night", None
+            ),  # Not used anymore
             "contype": getattr(service, "contype", None),
             "intervals": intervals,
             "active_now": is_active_now,
@@ -210,7 +207,6 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
 
     should_be_blocked = check_service_should_be_blocked(servicecats, current_time)
     speed, speed_night, contype = get_effective_speed_params(servicecats, current_time)
-    turbo_multiplier = get_turbo_multiplier(servicecats, current_time)
     iptv_enabled = is_iptv_enabled(servicecats, current_time)
 
     active_interval_dict: Optional[Dict[str, Any]] = None
@@ -228,13 +224,13 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
     return {
         "has_servicecats": True,
         "services": services,
-        "effective_speed": {
-            "speed": _safe_int(speed, "servicecats.speed"),
-            "speed_night": _safe_int(speed_night, "servicecats.speed_night"),
+        "effective_speed_from_intervals": {
+            "speed": _safe_int(speed, "interval.speed"),
+            "speed_night": _safe_int(speed_night, "interval.speed_night"),
             "contype": contype,
+            "note": "Speed taken ONLY from active interval (turbo already included if active)",
         },
         "should_be_blocked": should_be_blocked,
-        "turbo_multiplier": turbo_multiplier,
         "iptv_enabled": iptv_enabled,
         "highest_priority_active_service": {
             "name": highest_service,
@@ -250,7 +246,10 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
 
 
 def _get_service_activation_string(
-    speed: Optional[int], contype: Optional[str], should_be_blocked: bool
+    speed: Optional[int],
+    contype: Optional[str],
+    should_be_blocked: bool,
+    service_name: Optional[str] = None,
 ) -> str:
     """Генерирует строку активации услуги для RADIUS."""
     if should_be_blocked:
@@ -259,11 +258,14 @@ def _get_service_activation_string(
     if not speed:
         return "NOINET-NOMONEY()"
 
+    # Используем имя сервиса из активного интервала
     if contype == "social":
-        return "INET-SOCIAL()"
+        service_name = service_name or "INET-SOCIAL"
+        return f"{service_name}()"
 
+    service_name = service_name or "INET-FREEDOM"
     speed_kb = int(speed * 1100)
-    return f"INET-FREEDOM({speed_kb}k)"
+    return f"{service_name}({speed_kb}k)"
 
 
 def _safe_int(value: Any, field_name: str) -> Optional[int]:

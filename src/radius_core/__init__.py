@@ -61,7 +61,6 @@ from .utils import (
     now_str,
     parse_event,
     get_service_params_for_login,
-    get_turbo_multiplier,
     is_iptv_enabled,
 )
 
@@ -113,6 +112,5 @@ __all__ = [
     "now_str", 
     "parse_event",
     "get_service_params_for_login",
-    "get_turbo_multiplier",
     "is_iptv_enabled",
 ]
