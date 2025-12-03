@@ -62,20 +62,17 @@ def get_highest_priority_active_service(
 
     active_services = []
 
-    # Динамически проходимся по всем полям servicecats
-    for field_name in dir(servicecats):
-        # Пропускаем служебные поля
-        if field_name.startswith("_") or field_name in ["model_config", "model_fields"]:
-            continue
+    # Получаем все сервисы (включая динамически добавленные)
+    all_services = servicecats.get_all_services()
 
-        service_category = getattr(servicecats, field_name, None)
-
-        # Проверяем что это объект категории услуги
-        if not service_category or not hasattr(service_category, "intervals"):
-            continue
-
+    for field_name, service_category in all_services.items():
         # Проверяем наличие поля name и что оно начинается с "INET"
         service_name_field = getattr(service_category, "name", None)
+
+        # Для поля "internet" если name отсутствует - используем дефолтное имя
+        if field_name == "internet" and not service_name_field:
+            service_name_field = "INET-FREEDOM"
+
         if not service_name_field or not service_name_field.startswith("INET"):
             continue
 

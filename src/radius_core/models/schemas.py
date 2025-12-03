@@ -198,6 +198,9 @@ class ServiceCategory(BaseModel):
 class ServiceCats(BaseModel):
     """Модель для категорий сервисов."""
 
+    model_config = ConfigDict(extra="allow")
+
+    # Известные типы сервисов (для типизации и валидации)
     internet: Optional[ServiceCategory] = Field(None, description="Услуга интернета")
     turbo: Optional[ServiceCategory] = Field(None, description="Турбо режим")
     children: Optional[ServiceCategory] = Field(
@@ -206,6 +209,25 @@ class ServiceCats(BaseModel):
     stopped: Optional[ServiceCategory] = Field(None, description="Временное отключение")
     testdrive: Optional[ServiceCategory] = Field(None, description="Тест драйв")
     gifts: Optional[ServiceCategory] = Field(None, description="Подарки")
+
+    def get_all_services(self) -> Dict[str, ServiceCategory]:
+        """Возвращает все сервисы включая динамически добавленные."""
+        result = {}
+
+        # Стандартные поля
+        for field_name in self.model_fields.keys():
+            service = getattr(self, field_name, None)
+            if service is not None:
+                result[field_name] = service
+
+        # Дополнительные поля (новые типы сервисов)
+        extra = getattr(self, "__pydantic_extra__", None)
+        if extra:
+            for field_name, value in extra.items():
+                if isinstance(value, (ServiceCategory, dict)):
+                    result[field_name] = value
+
+        return result
 
 
 class LoginBase(BaseModel):

@@ -158,18 +158,10 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
 
     services: Dict[str, Any] = {}
 
-    # Динамически проходимся по всем полям servicecats
-    for field_name in dir(servicecats):
-        # Пропускаем служебные поля
-        if field_name.startswith("_") or field_name in ["model_config", "model_fields"]:
-            continue
+    # Получаем все сервисы (включая динамически добавленные)
+    all_services = servicecats.get_all_services()
 
-        service = getattr(servicecats, field_name, None)
-
-        # Проверяем что это объект категории услуги
-        if not service or not hasattr(service, "intervals"):
-            continue
-
+    for field_name, service in all_services.items():
         intervals = []
         is_active_now = False
         if getattr(service, "intervals", None):
