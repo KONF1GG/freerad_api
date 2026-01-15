@@ -4,9 +4,11 @@
 
 import re
 import logging
+import secrets
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
 from dateutil import parser
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ def now_str() -> str:
 def nasportid_parse(nasportid: str) -> Dict[str, str]:
     """Парсит nasportid в словарь"""
     m = re.match(
-        r"^(?P<psiface>ps\d+)\.\d+\:(?P<svlan>\d+)\-?(?P<cvlan>\d+)?$",
+        r"^(?P<psiface>\w+\d+)\.\d*\:?(?P<svlan>\d+)(?:\-(?P<cvlan>\d+))?$",
         nasportid,
     )
     return m.groupdict() if m else {"psiface": "", "svlan": "", "cvlan": ""}
@@ -97,18 +99,22 @@ PREFIX_MAP: Dict[str, Tuple[int, str, str, bool]] = {
     "0x48575443e6": (10, "E0:E8:{}", ":", False),
     "0x485754431d": (10, "50:5B:{}", ":", False),
     "0x48575443af": (10, "D0:5F:{}", ":", False),
+    "0x4857544382": (10, "F8:F0:{}", ":", False),
     "0x485754433641": (10, "70:A5:{}", ":", True),
     "0x485754434136": (10, "80:F7:{}", ":", True),
     "0x485754434536": (10, "E0:E8:{}", ":", True),
     "0x485754433144": (10, "50:5B:{}", ":", True),
     "0x485754434146": (10, "D0:5F:{}", ":", True),
+    "0x485754433832": (10, "F8:F0:{}", ":", True),
     "0x34383537353434333641": (18, "70:A5:{}", ":", True),
     "0x34383537353434334136": (18, "80:F7:{}", ":", True),
     "0x34383537353434334536": (18, "E0:E8:{}", ":", True),
     "0x34383537353434333144": (18, "50:5B:{}", ":", True),
     "0x34383537353434334146": (18, "D0:5F:{}", ":", True),
-    "0x3435344335343538": (18, "ELTX{}", "", True)
+    "0x34383537353434333832": (18, "F8:F0:{}", ":", True),
+    "0x3435344335343538": (18, "ELTX{}", "", True),
 }
+
 
 def mac_from_hex(hex_var: str) -> str:
     """Преобразует hex в MAC-адрес"""
@@ -146,3 +152,70 @@ def parse_service_name(service_session: str) -> Optional[str]:
     except (ValueError, AttributeError) as e:
         logger.warning("Ошибка парсинга названия услуги из %s: %s", service_session, e)
         return None
+
+
+def mac_to_ipv6_ula(mac_addr: str) -> Optional[Tuple[str, str]]:
+    """Преобразует MAC-адрес в IPv6 ULA адреса.
+
+    Преобразует MAC-адрес в два IPv6 ULA адреса:
+    - framed-ipv6-prefix: "fd00::xxxx:xxxx:xxxx:1/128"
+    - delegated-ipv6-prefix: "fd00:deed:xxxx:xxxx::/64"
+
+    Args:
+        mac_addr: MAC-адрес в любом формате ("d4bf.7f52.e8dc", "04:bf:6d:64:ee:07" и т.д.)
+
+    Returns:
+        Кортеж (framed-ipv6-prefix, delegated-ipv6-prefix) или None если MAC невалидный
+
+    Пример:
+        >>> mac_to_ipv6_ula("d4bf.7f52.e8dc")
+        ('fd00::d4bf:7f52:e8dc:1/128', 'fd00:deed:7f52:e8dc::/64')
+    """
+    if not mac_addr:
+        return None
+
+    # Очищаем MAC адрес от разделителей
+    mac_clean = mac_addr.replace(":", "").replace("-", "").replace(".", "").lower()
+
+    # Проверяем, что это валидное 16-ричное значение длиной 12 символов
+    if not re.match(r"^[0-9a-f]{12}$", mac_clean):
+        return None
+
+    # Разбиваем на сегменты по 4 символа
+    segments = [mac_clean[i : i + 4] for i in range(0, 12, 4)]
+
+    # framed-ipv6-prefix: используем все сегменты MAC
+    framed = f"fd00::{':'.join(segments)}:1/128"
+
+    # delegated-ipv6-prefix: заменяем первый сегмент на "deed", используем последние 2 сегмента
+    delegated = f"fd00:deed:{segments[1]}:{segments[2]}::/64"
+
+    return (framed, delegated)
+
+
+def generate_random_ipv6_ula() -> Tuple[str, str]:
+    """Генерирует случайные IPv6 ULA адреса.
+
+    Генерирует два случайных IPv6 ULA адреса:
+    - framed-ipv6-prefix: "fd00::xxxx:xxxx:xxxx:1/128" (где xxxx:xxxx:xxxx - случайные значения)
+    - delegated-ipv6-prefix: "fd00:deed:xxxx:xxxx::/64" (где xxxx:xxxx - те же случайные значения)
+
+    Returns:
+        Кортеж (framed-ipv6-prefix, delegated-ipv6-prefix)
+
+    Пример:
+        >>> generate_random_ipv6_ula()
+        ('fd00::d4bf:7f52:e8dc:1/128', 'fd00:deed:7f52:e8dc::/64')
+    """
+    # Генерируем 3 случайных 16-битных сегмента (по 4 hex символа каждый)
+    segment1 = f"{secrets.randbelow(65536):04x}"  # 0x0000 - 0xFFFF
+    segment2 = f"{secrets.randbelow(65536):04x}"
+    segment3 = f"{secrets.randbelow(65536):04x}"
+
+    # framed-ipv6-prefix: используем все три сегмента
+    framed = f"fd00::{segment1}:{segment2}:{segment3}:1/128"
+
+    # delegated-ipv6-prefix: используем последние два сегмента с префиксом "deed"
+    delegated = f"fd00:deed:{segment2}:{segment3}::/64"
+
+    return (framed, delegated)

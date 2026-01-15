@@ -3,23 +3,23 @@
 import asyncio
 import json
 import logging
-import time
 from typing import Any, Dict
 from fastapi import HTTPException
 
 from ...config.settings import SESSION_LIMIT
 from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
+from ...utils.service_intervals import (
+    get_service_params_for_login,
+)
 
 from ...models.schemas import LoginSearchResult, VideoLoginSearchResult
-from ..monitoring.service_utils import check_service_expiry
-
 from ..storage.search_operations import (
     find_login_by_session,
     find_sessions_by_login,
 )
 from ..storage.queue_operations import send_auth_log_to_queue
 from ...models import AuthRequest, AuthResponse, AuthDataLog
-from ...utils import nasportid_parse, mac_from_hex
+from ...utils import nasportid_parse, mac_from_hex, generate_random_ipv6_ula
 from ...core.metrics import track_function
 from ...clients.redis_client import execute_redis_command
 
@@ -127,10 +127,12 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
 
         # Ситуация с отсутствием опции 82 (ADSL_Agent_Remote_Id) в запросе с OLT CDATA 11xx
         # Приходит пакет с svlan = 5xx, но без опции 82, делаем reject
+        # Исключение: если в Redis vlan=0, то игнорируем эту проверку
         if (
             nasportid["svlan"][0] == "5"
             and onu_mac == ""
             and data.Framed_Protocol != "PPP"
+            and not (login and getattr(login, "vlan", "") == "0")
         ):
             auth_response.reply_message = {
                 "value": "Remote ID (Option82) not found in packet from 5xx svlan (OLT bug)"
@@ -293,17 +295,18 @@ async def _handle_regular_auth(
 ) -> AuthResponse:
     """Обрабатывает авторизацию обычных пользователей"""
     sessions = await find_sessions_by_login(login.login or "", redis, login)
-    session_count = len(sessions)
+    total_session_count = len(sessions)
 
     # Проверяем лимит сессий
-    if session_count >= SESSION_LIMIT:
+    # Исключение: если в Redis vlan=0, то игнорируем эту проверку
+    if total_session_count >= SESSION_LIMIT and getattr(login, "vlan", "") != "0":
         logger.warning(
             "Превышен лимит сессий (%s) для пользователя %s",
-            session_count,
+            total_session_count,
             login.login,
         )
         auth_response.reply_message = {
-            "value": f"Session limit exceeded: {session_count}, login: {login.login or ''}"
+            "value": f"Session limit exceeded: {total_session_count}, login: {login.login or ''}"
         }
         auth_response.control_auth_type = {"value": "Reject"}
 
@@ -327,83 +330,75 @@ async def _handle_regular_auth(
 
     # Настраиваем сервисы
     auth_response = _configure_regular_services(
-        auth_response, login, nasportid, data, session_count
+        auth_response, login, nasportid, data, total_session_count
     )
 
     # Проверяем дублирующие сессии
     if data.Framed_IP_Address:
         auth_response = _handle_duplicate_session(auth_response, login)
 
-    # Проверяем статический IP
-    if session_count > 0 and login.ip_addr:
-        logger.warning(
-            "Превышен лимит для статического IP %s, пользователь %s",
-            login.ip_addr,
-            login.login,
-        )
-        auth_response.reply_message = {
-            "value": f"Static IP limit: {login.ip_addr}, login: {login.login or ''}"
-        }
-        auth_response.control_auth_type = {"value": "Reject"}
+    # Проверяем статический IP - разрешаем только если нет активных сессий с тем же IP
+    # Исключение: если в Redis vlan=0, то игнорируем эту проверку
+    if login.ip_addr and getattr(login, "vlan", "") != "0":
+        # Ищем сессии с тем же статическим IP
+        sessions_with_same_ip = [s for s in sessions if s.ip_addr == login.ip_addr]
 
-        auth_raw_pretty_local2 = _format_auth_response_for_log(auth_response, login)
-        asyncio.create_task(
-            _save_auth_log(
-                data,
-                login,
-                "Access-Reject",
-                f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
-                psifaces_description=await _get_psiface_description(
-                    nasportid, redis, data.NAS_IP_Address
-                ),
-                auth_raw_pretty=auth_raw_pretty_local2,
+        if sessions_with_same_ip:
+            logger.warning(
+                "Найдена активная сессия с тем же статическим IP %s, пользователь %s",
+                login.ip_addr,
+                login.login,
             )
-        )
-        raise HTTPException(
-            status_code=403,
-            detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
-        )
+            auth_response.reply_message = {
+                "value": f"Static IP limit: {login.ip_addr}, login: {login.login or ''}"
+            }
+            auth_response.control_auth_type = {"value": "Reject"}
+
+            auth_raw_pretty_local2 = _format_auth_response_for_log(auth_response, login)
+            asyncio.create_task(
+                _save_auth_log(
+                    data,
+                    login,
+                    "Access-Reject",
+                    f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+                    psifaces_description=await _get_psiface_description(
+                        nasportid, redis, data.NAS_IP_Address
+                    ),
+                    auth_raw_pretty=auth_raw_pretty_local2,
+                )
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Static IP limit exceeded [{login.login} {login.ip_addr}]",
+            )
 
     return auth_response
 
 
 def _configure_regular_services(
     auth_response: AuthResponse,
-    login: Any,
+    login: LoginSearchResult,
     nasportid: Dict[str, Any],
     data: AuthRequest,
     session_count: int,
 ) -> AuthResponse:
     """Настраивает сервисы для обычных пользователей"""
-    timeto = getattr(
-        getattr(getattr(login, "servicecats", None), "internet", None),
-        "timeto",
-        None,
-    )
-    speed = getattr(
-        getattr(getattr(login, "servicecats", None), "internet", None),
-        "speed",
-        None,
-    )
 
-    # Проверяем срок действия услуги
-    now_timestamp = time.time()
-    service_should_be_blocked = check_service_expiry(timeto, now_timestamp)
+    # Получаем параметры услуги с учетом новой структуры интервалов
+    speed, speed_night, contype, service_should_be_blocked, service_name = (
+        get_service_params_for_login(login)
+    )
 
     # Выставляем услугу
     if not service_should_be_blocked:
         calc_speed = int(float(speed) * 1100) if speed is not None else 0
 
-        contype = getattr(
-            getattr(getattr(login, "servicecats", None), "internet", None),
-            "contype",
-            None,
-        )
-
         if contype == "social":
+            # Для social используем INET-SOCIAL (этого имени в Redis пока нет)
             auth_response.reply_erx_service_activate = "INET-SOCIAL()"
         else:
-            auth_response.reply_erx_service_activate = f"INET-FREEDOM({calc_speed}k)"
+            # Используем имя сервиса из активного интервала (name из Redis)
+            auth_response.reply_erx_service_activate = f"{service_name}({calc_speed}k)"
 
     else:
         auth_response.reply_erx_service_activate = "NOINET-NOMONEY()"
@@ -425,6 +420,11 @@ def _configure_regular_services(
     ):
         auth_response.reply_framed_ipv6_prefix = login.ipv6
         auth_response.reply_delegated_ipv6_prefix = getattr(login, "ipv6_pd", "")
+    else:
+        # Генерируем случайные IPv6 адреса
+        ipv6_ula, ipv6_ula_delegeted = generate_random_ipv6_ula()
+        auth_response.reply_framed_ipv6_prefix = ipv6_ula
+        auth_response.reply_delegated_ipv6_prefix = ipv6_ula_delegeted
 
     if login.login == "znvpn7132":
         auth_response.reply_framed_route = "80.244.41.248/29"

@@ -7,7 +7,8 @@ import asyncio
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
 
-from radius_core.utils.helpers import parse_service_name
+from ...utils.helpers import parse_service_name
+from ...utils.service_intervals import get_service_params_for_login
 
 from ...config import RADIUS_LOGIN_PREFIX
 from ..storage.search_operations import (
@@ -25,24 +26,16 @@ logger = logging.getLogger(__name__)
 
 def _get_service_params(
     login_data: LoginSearchResult,
-) -> tuple[Optional[int], Optional[str]]:
-    """Извлекает параметры услуги из данных логина."""
-    servicecats = getattr(login_data, "servicecats", None)
-    if not servicecats:
-        return None, None
+) -> tuple[Optional[int], Optional[str], Optional[str]]:
+    """Извлекает параметры услуги из данных логина с учетом новой структуры интервалов."""
+    from ...utils.service_intervals import get_service_params_for_login
 
-    internet = getattr(servicecats, "internet", None)
-    if not internet:
-        return None, None
+    speed, speed_night, contype, service_should_be_blocked, service_name = (
+        get_service_params_for_login(login_data)
+    )
 
-    timeto = getattr(internet, "timeto", None)
-    speed = getattr(internet, "speed", None)
-
-    # Если speed в login_data не пустой, используем его
-    if login_data.speed and login_data.speed != "0":
-        speed = login_data.speed
-
-    return timeto, speed
+    # Возвращаем timeto=None, speed, service_name
+    return None, str(speed) if speed is not None else None, service_name
 
 
 def _parse_service_speed(service_session: str) -> Optional[float]:
@@ -66,13 +59,11 @@ def _parse_service_speed(service_session: str) -> Optional[float]:
         return None
 
 
-
-
-
 async def check_and_correct_service_state(
     session: SessionData, login_data: LoginSearchResult, login_name: str, channel=None
 ) -> Optional[Dict[str, Any]]:
     """Проверить и скорректировать состояние сервиса"""
+
     logger.info(
         "Проверка и корректировка состояния сервиса для сессии %s (%s)",
         session.Acct_Unique_Session_Id,
@@ -82,12 +73,10 @@ async def check_and_correct_service_state(
     if not session.ERX_Service_Session:
         return None
 
-    # Получаем параметры услуги
-    timeto, speed = _get_service_params(login_data)
-
-    # Проверяем срок действия услуги
-    now_timestamp = time.time()
-    service_should_be_blocked = check_service_expiry(timeto, now_timestamp)
+    # Получаем параметры услуги с учетом новой структуры
+    speed, speed_night, contype, service_should_be_blocked, service_name = (
+        get_service_params_for_login(login_data)
+    )
 
     # Анализируем состояние с роутера
     router_says_blocked = "NOINET-NOMONEY" in session.ERX_Service_Session
@@ -106,12 +95,12 @@ async def check_and_correct_service_state(
         if speed:
             try:
                 expected_speed_kb = int(float(speed) * 1100)
+                # Используем имя сервиса из активного интервала
+                active_service_name = service_name or "INET-FREEDOM"
                 # Получаем текущее название услуги для деактивации
                 current_service_name = parse_service_name(session.ERX_Service_Session)
                 coa_attributes = {
-                    "ERX-Service-Activate:1": "INET-FREEDOM("
-                    + str(expected_speed_kb)
-                    + "k)",
+                    "ERX-Service-Activate:1": f"{active_service_name}({expected_speed_kb}k)",
                     "ERX-Service-Deactivate": current_service_name or "NOINET-NOMONEY",
                 }
                 reason = f"Router incorrectly blocked service for {login_name}, unblocking with speed {expected_speed_kb}k"
@@ -144,7 +133,9 @@ async def check_and_correct_service_state(
         reason = f"Service expired for {login_name}, blocking access"
         coa_attributes = {
             "ERX-Service-Activate:1": "NOINET-NOMONEY()",
-            "ERX-Service-Deactivate": current_service_name or "INET-FREEDOM",
+            "ERX-Service-Deactivate": current_service_name
+            or service_name
+            or "INET-FREEDOM",
         }
         logger.info(
             "CoA SET: блокировка сервиса для сессии %s (%s), атрибуты: %s",
@@ -173,16 +164,16 @@ async def check_and_correct_service_state(
                             expected_speed_kb,
                             service_speed_mb,
                         )
+                        # Используем имя сервиса из активного интервала
+                        active_service_name = service_name or "INET-FREEDOM"
                         # Получаем текущее название услуги для деактивации
                         current_service_name = parse_service_name(
                             session.ERX_Service_Session
                         )
                         coa_attributes = {
-                            "ERX-Service-Activate:1": "INET-FREEDOM("
-                            + str(expected_speed_kb)
-                            + "k)",
+                            "ERX-Service-Activate:1": f"{active_service_name}({expected_speed_kb}k)",
                             "ERX-Service-Deactivate": current_service_name
-                            or "INET-FREEDOM",
+                            or active_service_name,
                         }
                         reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
                         logger.info(

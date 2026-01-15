@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from ..utils import parse_event
-
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +74,8 @@ class BaseAccountingData(BaseModel):
     @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
+        from ..utils.helpers import parse_event
+
         return parse_event(ts)
 
     @field_validator(
@@ -158,18 +158,76 @@ class ServiceCheckResponse(BaseResponse):
     """Модель для ответа на запрос проверки сервисов."""
 
 
+class ServiceInterval(BaseModel):
+    """Модель для интервала услуги."""
+
+    begin: int = Field(..., description="Время начала интервала (timestamp)")
+    end: int = Field(..., description="Время окончания интервала (timestamp)")
+    name: Optional[str] = Field(None, description="Название услуги")
+    id: Optional[str] = Field(None, description="ID услуги")
+
+    # Параметры интернета (для internet)
+    speed: Optional[int] = Field(None, description="Скорость интернета")
+    speed_night: Optional[int] = Field(None, description="Ночная скорость")
+    has_turbo: Optional[bool] = Field(None, description="Поддержка турбо")
+    turbo: Optional[int] = Field(None, description="Множитель турбо")
+
+    # Параметры для testdrive
+    iptv: Optional[bool] = Field(None, description="IPTV для testdrive")
+
+    # Дополнительные поля из БД игнорируются автоматически
+    model_config = ConfigDict(extra="ignore")
+
+
 class ServiceCategory(BaseModel):
     """Модель для категории сервиса."""
 
-    timeto: Optional[int] = None
-    speed: Optional[int] = None
-    contype: Optional[str] = None
+    timeto: Optional[int] = Field(None, description="Время окончания услуги")
+    intervals: Optional[List[ServiceInterval]] = Field(
+        default_factory=list, description="Интервалы услуги"
+    )
+    name: Optional[str] = Field(None, description="Название услуги")
+    prio: Optional[int] = Field(None, description="Приоритет услуги")
+
+    # Параметры для internet
+    speed: Optional[int] = Field(None, description="Базовая скорость")
+    speed_night: Optional[int] = Field(None, description="Базовая ночная скорость")
+    contype: Optional[str] = Field(None, description="Тип подключения")
 
 
 class ServiceCats(BaseModel):
     """Модель для категорий сервисов."""
 
-    internet: Optional[ServiceCategory] = None
+    model_config = ConfigDict(extra="allow")
+
+    # Известные типы сервисов (для типизации и валидации)
+    internet: Optional[ServiceCategory] = Field(None, description="Услуга интернета")
+    turbo: Optional[ServiceCategory] = Field(None, description="Турбо режим")
+    children: Optional[ServiceCategory] = Field(
+        None, description="Детский/Безопасный интернет"
+    )
+    stopped: Optional[ServiceCategory] = Field(None, description="Временное отключение")
+    testdrive: Optional[ServiceCategory] = Field(None, description="Тест драйв")
+    gifts: Optional[ServiceCategory] = Field(None, description="Подарки")
+
+    def get_all_services(self) -> Dict[str, ServiceCategory]:
+        """Возвращает все сервисы включая динамически добавленные."""
+        result = {}
+
+        # Стандартные поля
+        for field_name in self.model_fields.keys():
+            service = getattr(self, field_name, None)
+            if service is not None:
+                result[field_name] = service
+
+        # Дополнительные поля (новые типы сервисов)
+        extra = getattr(self, "__pydantic_extra__", None)
+        if extra:
+            for field_name, value in extra.items():
+                if isinstance(value, (ServiceCategory, dict)):
+                    result[field_name] = value
+
+        return result
 
 
 class LoginBase(BaseModel):
@@ -352,6 +410,8 @@ class AuthRequest(BaseModel):
     @classmethod
     def parse_timestamp(cls: type, ts: str | datetime | dict) -> datetime:
         """Normalize various timestamp inputs to a timezone-aware UTC datetime."""
+        from ..utils.helpers import parse_event
+
         return parse_event(ts)
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
@@ -405,8 +465,13 @@ class AuthResponse(BaseModel):
     reply_framed_ipv6_prefix: Optional[str] = Field(
         None, alias="reply:Framed-IPv6-Prefix"
     )
+    reply_framed_ipv6_pool: Optional[str] = Field(None, alias="reply:Framed-IPv6-Pool")
+
     reply_delegated_ipv6_prefix: Optional[str] = Field(
         None, alias="reply:Delegated-IPv6-Prefix"
+    )
+    reply_delegated_pool_name: Optional[str] = Field(
+        None, alias="reply:ERX-IPv6-Delegated-Pool-Name"
     )
     reply_framed_route: Optional[str] = Field(None, alias="reply:Framed-Route")
     reply_erx_service_activate: Optional[str] = Field(

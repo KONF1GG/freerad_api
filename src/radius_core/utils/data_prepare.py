@@ -4,7 +4,7 @@
 from typing import Tuple, Union
 
 from ..models import AccountingData, AuthRequest
-from .helpers import is_username_mac, mac_from_username, mac_from_hex, nasportid_parse
+from .helpers import is_username_mac, logger, mac_from_username, mac_from_hex, nasportid_parse
 
 async def get_username_onu_mac_vlan_from_data(
     data: Union[AccountingData, AuthRequest],

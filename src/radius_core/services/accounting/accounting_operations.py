@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
 
-from radius_core.services.monitoring.service_checker import (
+from ..monitoring.service_checker import (
     check_and_correct_service_state,
 )
 from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
@@ -104,13 +104,23 @@ async def process_accounting(
         session_req = process_traffic_data(session_req)
 
         # Обработка сервисных сессий
-        if is_service_session and session_req.Acct_Status_Type == "Start":
-            await asyncio.sleep(0.3)
-            logger.info(
-                "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
-                session_req.Acct_Status_Type,
-                session_req.Acct_Session_Id,
-            )
+        if is_service_session and (
+            session_req.Acct_Status_Type == "Start"
+            or session_req.Acct_Status_Type == "Interim-Update"
+        ):
+            if session_req.Acct_Status_Type == "Start":
+                await asyncio.sleep(0.3)
+                logger.info(
+                    "Добавление сервиса в основную сессию таймаут 0.3 секунды (%s) %s",
+                    session_req.Acct_Status_Type,
+                    session_req.Acct_Session_Id,
+                )
+            else:
+                logger.info(
+                    "Добавление сервиса в основную сессию (%s) %s",
+                    session_req.Acct_Status_Type,
+                    session_req.Acct_Session_Id,
+                )
             asyncio.create_task(update_main_session_service(session_req, redis))
 
         # Обработка завершения сессии при изменении логина или его отсутствии

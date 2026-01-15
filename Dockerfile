@@ -1,3 +1,4 @@
+
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -17,4 +18,4 @@ ENV PROMETHEUS_MULTIPROC_DIR=/app/prometheus_multiproc_dir
 
 WORKDIR /app/src
 
-CMD ["uv", "run", "gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "main:app"]
+CMD ["uv", "run", "gunicorn", "-w", "6", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "main:app"]
