@@ -182,6 +182,9 @@ def get_service_params_for_login(
         service_name - имя активного сервиса (например "INET-TURBO", "INET-FREEDOM")
     """
     servicecats = getattr(login_data, "servicecats", None)
+    override_speed = getattr(login_data, "speed", None)
+    override_speed_night = getattr(login_data, "speed_night", None)
+
     if not servicecats:
         # Нет servicecats - блокируем
         return None, None, None, True, None
@@ -204,8 +207,8 @@ def get_service_params_for_login(
         if active_service_category
         else None
     )
-    speed = active_interval.speed
-    speed_night = active_interval.speed_night
+    speed = active_interval.speed if override_speed == "0" or None else override_speed
+    speed_night = active_interval.speed_night if override_speed_night == "0" or None else override_speed_night
 
     # contype берется из категории (может быть None)
     contype = getattr(active_service_category, "contype", None)
