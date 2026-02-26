@@ -157,34 +157,6 @@ async def auth(data: AuthRequest, redis) -> Dict[str, Any]:
         if not login:
             logger.warning("Пользователь не найден: %s", data.User_Name)
 
-            # Специальная логика для NAS 10.10.15.212 с PPP протоколом
-            if data.NAS_IP_Address == "10.10.15.212" and data.Framed_Protocol == "PPP":
-                logger.warning(
-                    "Reject для NAS %s с PPP протоколом без логина: %s",
-                    data.NAS_IP_Address,
-                    data.User_Name,
-                )
-                auth_response.reply_message = {
-                    "value": f"User not found [{data.User_Name}], {mac_address}"
-                }
-                auth_response.control_auth_type = {"value": "Reject"}
-
-                asyncio.create_task(
-                    _save_auth_log(
-                        data,
-                        login,
-                        "Access-Reject",
-                        f"User not found [{data.User_Name}], {mac_address}",
-                        psifaces_description=psifaces_description,
-                        auth_raw_pretty=_format_auth_response_for_log(
-                            auth_response, login
-                        ),
-                    )
-                )
-                return auth_response.to_radius_with_additional_attrs(
-                    login.radiusAttrs if login else None
-                )
-
             # Обычная логика для остальных случаев
             auth_response = _build_noinet_novlan(
                 auth_response, f"User not found [{data.User_Name}], {mac_address}"
