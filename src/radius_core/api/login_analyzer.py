@@ -6,7 +6,7 @@ import time
 import logging
 import json
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 
 from ..models.schemas import LoginSearchResult
 from ..core.dependencies import RedisDependency
@@ -82,7 +82,7 @@ async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
 
         # Основные параметры через новую логику
         speed, speed_night, contype, should_be_blocked, service_name = (
-            get_service_params_for_login(login_data)
+            get_service_params_for_login(login_data, current_time)
         )
 
         final_speed = _safe_int(speed, "speed")
@@ -193,7 +193,7 @@ def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
             "active_now": is_active_now,
         }
 
-    highest_service, active_interval, service_category = (
+    highest_service, active_interval, service_category, _ = (
         get_highest_priority_active_service(servicecats, current_time)
     )
 

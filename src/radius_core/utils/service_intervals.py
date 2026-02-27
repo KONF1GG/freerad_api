@@ -42,7 +42,9 @@ def get_active_interval(
 
 def get_highest_priority_active_service(
     servicecats: Optional[ServiceCats], current_time: Optional[float] = None
-) -> Tuple[Optional[str], Optional[ServiceInterval], Optional[ServiceCategory]]:
+) -> Tuple[
+    Optional[str], Optional[ServiceInterval], Optional[ServiceCategory], Optional[str]
+]:
     """
     Определяет услугу с наивысшим приоритетом среди активных.
     Проверяет все категории и выбирает только те, у которых name начинается с "INET".
@@ -52,10 +54,10 @@ def get_highest_priority_active_service(
         current_time: Текущее время (timestamp)
 
     Returns:
-        Кортеж (название_категории, активный_интервал, категория_услуги)
+        Кортеж (название_категории, активный_интервал, категория_услуги, имя_сервиса)
     """
     if not servicecats:
-        return None, None, None
+        return None, None, None, None
 
     if current_time is None:
         current_time = time.time()
@@ -83,18 +85,26 @@ def get_highest_priority_active_service(
 
         priority = service_category.prio
         active_services.append(
-            (priority, field_name, active_interval, service_category)
+            (
+                priority,
+                field_name,
+                active_interval,
+                service_category,
+                service_name_field,
+            )
         )
 
     if not active_services:
-        return None, None, None
+        return None, None, None, None
 
     # Сортируем по приоритету (возрастание): меньшее число = выше приоритет
     # Например: prio=1 > prio=10
     active_services.sort(key=lambda x: x[0])
-    _, service_name, active_interval, service_category = active_services[0]
+    _, service_name, active_interval, service_category, computed_service_name = (
+        active_services[0]
+    )
 
-    return service_name, active_interval, service_category
+    return service_name, active_interval, service_category, computed_service_name
 
 
 def get_effective_speed_params(
@@ -113,7 +123,7 @@ def get_effective_speed_params(
     if not servicecats:
         return None, None, None
 
-    service_name, active_interval, service_category = (
+    service_name, active_interval, service_category, _ = (
         get_highest_priority_active_service(servicecats, current_time)
     )
 
@@ -156,7 +166,7 @@ def check_service_should_be_blocked(
             return True
 
     # Затем получаем услугу с наивысшим приоритетом среди всех активных
-    service_name, active_interval, service_category = (
+    service_name, active_interval, service_category, _ = (
         get_highest_priority_active_service(servicecats, current_time)
     )
 
@@ -170,12 +180,14 @@ def check_service_should_be_blocked(
 
 def get_service_params_for_login(
     login_data: LoginSearchResult,
+    current_time: Optional[float] = None,
 ) -> Tuple[Optional[int], Optional[int], Optional[str], bool, Optional[str]]:
     """
     Извлекает параметры услуги из данных логина.
 
     Args:
         login_data: Данные логина
+        current_time: Текущее время (timestamp), если None - используется time.time()
 
     Returns:
         Кортеж (speed, speed_night, contype, should_be_blocked, service_name)
@@ -190,25 +202,43 @@ def get_service_params_for_login(
         return None, None, None, True, None
 
     # Проверяем блокировку
-    should_be_blocked = check_service_should_be_blocked(servicecats)
+    should_be_blocked = check_service_should_be_blocked(servicecats, current_time)
     if should_be_blocked:
         return None, None, None, True, None
 
-    service_name_field, active_interval, active_service_category = (
-        get_highest_priority_active_service(servicecats)
-    )
+    (
+        service_name_field,
+        active_interval,
+        active_service_category,
+        computed_service_name,
+    ) = get_highest_priority_active_service(servicecats, current_time)
 
     if not service_name_field or not active_interval:
         return None, None, None, True, None
 
-    # Получаем имя сервиса из категории
-    service_name = (
-        getattr(active_service_category, "name", None)
-        if active_service_category
-        else None
-    )
-    speed = active_interval.speed if override_speed == "0" or None else override_speed
-    speed_night = active_interval.speed_night if override_speed_night == "0" or None else override_speed_night
+    # Используем вычисленное имя сервиса из функции get_highest_priority_active_service
+    service_name = computed_service_name
+
+    # Логика определения скорости: если есть переопределение и оно не "0", используем его
+    # иначе используем скорость из интервала
+    def get_effective_speed(override_value, interval_value):
+        """Определяет эффективную скорость с учетом переопределения."""
+        if override_value is None:
+            return interval_value
+
+        # Преобразуем в строку для сравнения
+        override_str = str(override_value)
+        if override_str == "0" or override_str == "":
+            return interval_value
+
+        # Преобразуем в int если это число
+        try:
+            return int(override_value)
+        except (ValueError, TypeError):
+            return interval_value
+
+    speed = get_effective_speed(override_speed, active_interval.speed)
+    speed_night = get_effective_speed(override_speed_night, active_interval.speed_night)
 
     # contype берется из категории (может быть None)
     contype = getattr(active_service_category, "contype", None)
@@ -232,7 +262,7 @@ def is_iptv_enabled(
     if not servicecats:
         return False
 
-    service_name, active_interval, service_category = (
+    service_name, active_interval, service_category, _ = (
         get_highest_priority_active_service(servicecats, current_time)
     )
 
