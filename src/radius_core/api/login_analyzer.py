@@ -26,17 +26,8 @@ router = APIRouter()
 
 @router.get("/analyze_login/{login}")
 async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
-    """
-    Анализирует реальный логин из Redis и проверяет новую логику услуг.
-
-    Args:
-        login: Логин пользователя для получения из Redis
-        redis: Redis клиент
-
-    Returns:
-        Полная информация об услугах, приоритетах и финальных параметрах
-    """
-    logger.info("Анализ реального логина из Redis: %s", login)
+    """Простой и наглядный анализ логина с приоритетами услуг."""
+    logger.info("Анализ логина: %s", login)
 
     try:
         login_key = f"{RADIUS_LOGIN_PREFIX}{login}"
@@ -47,92 +38,159 @@ async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
                 status_code=404, detail=f"Логин {login} не найден в Redis"
             )
 
-        # Парсим данные логина
         login_data_dict = json.loads(login_data_raw)
         login_data = LoginSearchResult.model_validate(login_data_dict)
-
-        # Текущее время
         current_time = time.time()
 
         # Базовая информация
         result = {
-            "login": login,
-            "redis_key": login_key,
-            "analysis_time": current_time,
-            "analysis_datetime": time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.localtime(current_time)
-            ),
-            "raw_data": login_data_dict,
+            "🔍 АНАЛИЗ ЛОГИНА": login,
+            "⏰ Время анализа": _format_time(current_time),
+            "📊 Timestamp": current_time,
         }
 
-        # Анализ servicecats
         servicecats = getattr(login_data, "servicecats", None)
-        iptv_enabled = False
+        if not servicecats:
+            result["🚫 СТАТУС"] = "БЛОКИРОВКА - НЕТ УСЛУГ"
+            result["💡 Причина"] = "Отсутствуют servicecats"
+            return result
 
-        if servicecats:
-            servicecats_analysis = _analyze_servicecats(servicecats, current_time)
-            iptv_enabled = bool(servicecats_analysis.get("iptv_enabled", False))
-            result["servicecats_analysis"] = servicecats_analysis
-        else:
-            result["servicecats_analysis"] = {
-                "has_servicecats": False,
-                "legacy_speed_field": getattr(login_data, "speed", None),
-                "message": "No servicecats found - will be blocked",
+        # Анализ всех услуг
+        all_services = servicecats.get_all_services()
+        services_info = []
+
+        for field_name, service in all_services.items():
+            if not service or not getattr(service, "intervals", None):
+                continue
+
+            service_name = getattr(service, "name", None)
+            priority = getattr(service, "prio", None)
+
+            # Проверяем каждый интервал
+            intervals_info = []
+            has_active_interval = False
+
+            for interval in service.intervals:
+                is_active = interval.begin <= current_time <= interval.end
+                if is_active:
+                    has_active_interval = True
+
+                interval_info = {
+                    "📝 Название": getattr(interval, "name", "Без названия"),
+                    "🕐 Начало": _format_time(interval.begin),
+                    "🕑 Конец": _format_time(interval.end),
+                    "📡 Статус": "✅ АКТИВЕН" if is_active else "❌ неактивен",
+                    "⚡ Скорость": f"{interval.speed} Мбит/с"
+                    if interval.speed
+                    else "не установлена",
+                    "🌙 Ночная скорость": f"{interval.speed_night} Мбит/с"
+                    if interval.speed_night
+                    else "не установлена",
+                }
+
+                # Информация о турбо
+                has_turbo = getattr(interval, "has_turbo", False)
+                turbo_multiplier = getattr(interval, "turbo", 1)
+                if has_turbo and turbo_multiplier and turbo_multiplier > 1:
+                    interval_info["🚀 Турбо"] = f"x{turbo_multiplier}"
+
+                intervals_info.append(interval_info)
+
+            # Проверяем, является ли это INET-сервисом
+            is_inet_service = (
+                service_name and service_name.startswith("INET")
+                if service_name
+                else field_name == "internet"
+            )
+            if field_name == "internet" and not service_name:
+                service_name = "INET-FREEDOM"
+
+            # Создаем базовую информацию о сервисе
+            service_info = {
+                "🏷️ Поле": field_name,
+                "📋 Название": service_name,
+                "🎯 Приоритет": priority,
+                "🌐 Тип": "🌐 INET-сервис" if is_inet_service else "⚪ Другая услуга",
+                "📊 Активность": "✅ АКТИВНА"
+                if has_active_interval and is_inet_service
+                else "❌ неактивна",
+                "📅 Интервалы": intervals_info,
             }
 
-        # Основные параметры через новую логику
-        speed, speed_night, contype, should_be_blocked, service_name = (
+            # Добавляем причину неактивности только для неактивных сервисов
+            if not (has_active_interval and is_inet_service):
+                service_info["💭 Причина неактивности"] = _get_inactive_reason(
+                    service, current_time, is_inet_service
+                )
+
+            services_info.append(service_info)
+
+        # Сортируем услуги по приоритету для наглядности
+        services_info.sort(
+            key=lambda x: x["🎯 Приоритет"] if x["🎯 Приоритет"] is not None else 999
+        )
+
+        result["📋 ВСЕ УСЛУГИ"] = services_info
+
+        # Определяем финальный результат
+        service_name, active_interval, service_category, computed_service_name = (
+            get_highest_priority_active_service(servicecats, current_time)
+        )
+
+        # Проверка на блокировку
+        should_be_blocked = check_service_should_be_blocked(servicecats, current_time)
+
+        if should_be_blocked:
+            # Проверяем причину блокировки
+            stopped_service = getattr(servicecats, "stopped", None)
+            if stopped_service:
+                stopped_interval = get_active_interval(stopped_service, current_time)
+                if stopped_interval:
+                    result["🚫 СТАТУС"] = "ПРИНУДИТЕЛЬНАЯ БЛОКИРОВКА"
+                    result["💡 Причина"] = "Активна услуга 'stopped'"
+                    return result
+
+            result["🚫 СТАТУС"] = "БЛОКИРОВКА"
+            result["💡 Причина"] = "Нет активных INET-услуг"
+            return result
+
+        # Есть активная услуга
+        result["🎯 ВЫБРАННАЯ УСЛУГА"] = {
+            "📋 Название": computed_service_name,
+            "🏷️ Поле": service_name,
+            "🎯 Приоритет": getattr(service_category, "prio", None)
+            if service_category
+            else None,
+            "💭 Причина выбора": f"Наивысший приоритет ({getattr(service_category, 'prio', None)}) среди активных INET-сервисов",
+        }
+
+        if active_interval:
+            result["🎯 ВЫБРАННАЯ УСЛУГА"]["📅 Активный интервал"] = {
+                "📝 Название": getattr(active_interval, "name", "Без названия"),
+                "🕐 Начало": _format_time(active_interval.begin),
+                "🕑 Конец": _format_time(active_interval.end),
+                "⚡ Скорость": f"{active_interval.speed} Мбит/с",
+                "🌙 Ночная скорость": f"{active_interval.speed_night} Мбит/с",
+            }
+
+        # Финальная конфигурация
+        speed, speed_night, contype, _, service_name_final = (
             get_service_params_for_login(login_data, current_time)
         )
 
-        final_speed = _safe_int(speed, "speed")
-        final_speed_night = _safe_int(speed_night, "speed_night")
-
-        result["new_logic_results"] = {
-            "speed": final_speed,
-            "speed_night": final_speed_night,
-            "contype": contype,
-            "should_be_blocked": should_be_blocked,
-            "service_name": service_name,
-            "iptv_enabled": iptv_enabled,
-        }
-
-        # Скорость берется напрямую из интервалов
-
-        result["radius_config"] = {
-            "final_speed_mbps": final_speed,
-            "final_speed_night_mbps": final_speed_night,
-            "final_speed_kb": _mbps_to_kbps(final_speed),
-            "service_activation": _get_service_activation_string(
-                final_speed, contype, should_be_blocked, service_name
+        result["⚡ ИТОГОВЫЕ ПАРАМЕТРЫ"] = {
+            "🚀 Скорость": f"{speed} Мбит/с" if speed else "не установлена",
+            "🌙 Ночная скорость": f"{speed_night} Мбит/с"
+            if speed_night
+            else "не установлена",
+            "🔌 Тип подключения": contype or "не указан",
+            "📺 IPTV": "✅ включено"
+            if is_iptv_enabled(servicecats, current_time)
+            else "❌ отключено",
+            "📡 RADIUS команда": _get_service_activation_string(
+                speed, contype, False, service_name_final
             ),
-            "should_be_blocked": should_be_blocked,
-            "note": "Speed is taken directly from intervals (turbo already included)",
         }
-
-        # Сравнение со старой логикой (legacy speed field)
-        legacy_speed = getattr(login_data, "speed", None)
-        legacy_speed_int = _safe_int(legacy_speed, "legacy_speed")
-        if legacy_speed_int and legacy_speed_int != 0:
-            legacy_speed_kb = _mbps_to_kbps(legacy_speed_int)
-
-            result["legacy_comparison"] = {
-                "legacy_speed_mbps": legacy_speed_int,
-                "legacy_speed_kb": legacy_speed_kb,
-                "legacy_activation": f"INET-FREEDOM({legacy_speed_kb}k)",
-                "speed_changed": (
-                    final_speed != legacy_speed_int if final_speed is not None else True
-                ),
-                "new_vs_legacy": {
-                    "new_speed_from_intervals": final_speed,
-                    "old_legacy_speed_field": legacy_speed_int,
-                    "difference": (
-                        final_speed - legacy_speed_int
-                        if final_speed is not None
-                        else None
-                    ),
-                },
-            }
 
         return result
 
@@ -142,99 +200,12 @@ async def analyze_login(login: str, redis: RedisDependency) -> Dict[str, Any]:
             status_code=500, detail=f"Некорректные данные в Redis: {e}"
         ) from e
     except HTTPException:
-        # Пробрасываем HTTP исключения (например 404), чтобы они не оборачивались в 500
         raise
     except Exception as e:
         logger.error("Ошибка анализа логина %s: %s", login, e, exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Ошибка анализа логина: {e}"
         ) from e
-
-
-def _analyze_servicecats(servicecats, current_time: float) -> Dict[str, Any]:
-    """Анализирует servicecats согласно новой логике."""
-    if not servicecats:
-        return {"has_servicecats": False, "message": "servicecats отсутствует"}
-
-    services: Dict[str, Any] = {}
-
-    # Получаем все сервисы (включая динамически добавленные)
-    all_services = servicecats.get_all_services()
-
-    for field_name, service in all_services.items():
-        intervals = []
-        is_active_now = False
-        if getattr(service, "intervals", None):
-            intervals = [
-                {
-                    "begin": interval.begin,
-                    "end": interval.end,
-                    "speed": interval.speed,
-                    "speed_night": interval.speed_night,
-                    "has_turbo": getattr(interval, "has_turbo", None),
-                    "turbo": getattr(interval, "turbo", None),
-                }
-                for interval in service.intervals
-            ]
-            is_active_now = any(
-                interval.begin <= current_time <= interval.end
-                for interval in service.intervals
-            )
-
-        services[field_name] = {
-            "name": getattr(service, "name", None),
-            "prio": getattr(service, "prio", None),
-            "base_speed_legacy": getattr(service, "speed", None),  # Not used anymore
-            "base_speed_night_legacy": getattr(
-                service, "speed_night", None
-            ),  # Not used anymore
-            "contype": getattr(service, "contype", None),
-            "intervals": intervals,
-            "active_now": is_active_now,
-        }
-
-    highest_service, active_interval, service_category, _ = (
-        get_highest_priority_active_service(servicecats, current_time)
-    )
-
-    should_be_blocked = check_service_should_be_blocked(servicecats, current_time)
-    speed, speed_night, contype = get_effective_speed_params(servicecats, current_time)
-    iptv_enabled = is_iptv_enabled(servicecats, current_time)
-
-    active_interval_dict: Optional[Dict[str, Any]] = None
-    if active_interval:
-        active_interval_dict = {
-            "begin": active_interval.begin,
-            "end": active_interval.end,
-            "speed": active_interval.speed,
-            "speed_night": active_interval.speed_night,
-            "has_turbo": getattr(active_interval, "has_turbo", None),
-            "turbo": getattr(active_interval, "turbo", None),
-            "iptv": getattr(active_interval, "iptv", None),
-        }
-
-    return {
-        "has_servicecats": True,
-        "services": services,
-        "effective_speed_from_intervals": {
-            "speed": _safe_int(speed, "interval.speed"),
-            "speed_night": _safe_int(speed_night, "interval.speed_night"),
-            "contype": contype,
-            "note": "Speed taken ONLY from active interval (turbo already included if active)",
-        },
-        "should_be_blocked": should_be_blocked,
-        "iptv_enabled": iptv_enabled,
-        "highest_priority_active_service": {
-            "name": highest_service,
-            "prio": getattr(service_category, "prio", None)
-            if service_category
-            else None,
-            "contype": getattr(service_category, "contype", None)
-            if service_category
-            else None,
-            "active_interval": active_interval_dict,
-        },
-    }
 
 
 def _get_service_activation_string(
@@ -277,25 +248,39 @@ def _safe_int(value: Any, field_name: str) -> Optional[int]:
         return None
 
 
-def _safe_float(value: Any, field_name: str) -> Optional[float]:
-    if value is None:
-        return None
-
+def _format_time(timestamp: float) -> str:
+    """Форматирует timestamp в читаемый вид."""
     try:
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                return None
-        if isinstance(value, bool):
-            raise TypeError("boolean is not a valid numeric value")
-        return float(value)
-    except (TypeError, ValueError):
-        logger.warning("Не удалось преобразовать %s=%r к float", field_name, value)
-        return None
+        return time.strftime("%d.%m.%Y %H:%M:%S", time.localtime(timestamp))
+    except (OSError, ValueError):
+        return f"timestamp:{timestamp}"
 
 
-def _mbps_to_kbps(value: Optional[int]) -> Optional[int]:
-    if value is None:
-        return None
+def _get_inactive_reason(
+    service, current_time: float, is_inet_service: bool
+) -> Optional[str]:
+    """Определяет причину неактивности услуги."""
+    if not is_inet_service:
+        return "Не INET-сервис"
 
-    return int(value * 1100)
+    if not getattr(service, "intervals", None):
+        return "Нет интервалов"
+
+    # Проверяем все интервалы
+    has_future_intervals = False
+    has_past_intervals = False
+
+    for interval in service.intervals:
+        if interval.end < current_time:
+            has_past_intervals = True
+        elif interval.begin > current_time:
+            has_future_intervals = True
+
+    if has_past_intervals and not has_future_intervals:
+        return "Все интервалы истекли"
+    elif has_future_intervals and not has_past_intervals:
+        return "Интервалы еще не начались"
+    elif has_past_intervals and has_future_intervals:
+        return "Между интервалами"
+
+    return "Нет подходящих интервалов"
