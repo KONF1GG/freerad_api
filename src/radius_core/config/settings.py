@@ -43,3 +43,26 @@ SESSION_LIMIT: int = 15
 PROMETHEUS_MULTIPROC_DIR: str = os.getenv(
     "PROMETHEUS_MULTIPROC_DIR", "/app/prometheus_multiproc_dir"
 )
+
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")
+KAFKA_ACCOUNTING_TOPIC: str = os.getenv("KAFKA_ACCOUNTING_TOPIC", "radius.accounting")
+KAFKA_TEST_TOPIC: str = os.getenv("KAFKA_TEST_TOPIC", "radius.test")
+KAFKA_CLIENT_ID: str = os.getenv("KAFKA_CLIENT_ID", "radius-core")
+KAFKA_ACKS: str = os.getenv("KAFKA_ACKS", "all")
+KAFKA_LINGER_MS: int = int(os.getenv("KAFKA_LINGER_MS", "5"))
+KAFKA_COMPRESSION_TYPE: str = os.getenv("KAFKA_COMPRESSION_TYPE", "gzip")
+KAFKA_REQUEST_TIMEOUT_MS: int = int(os.getenv("KAFKA_REQUEST_TIMEOUT_MS", "30000"))
+KAFKA_MAX_REQUEST_SIZE: int = int(os.getenv("KAFKA_MAX_REQUEST_SIZE", "1048576"))
+
+# Kafka security (SASL/TLS)
+KAFKA_SECURITY_PROTOCOL: str = os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
+KAFKA_SASL_MECHANISM: str = os.getenv("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512")
+KAFKA_SASL_USERNAME: str = os.getenv("KAFKA_SASL_USERNAME", "")
+KAFKA_SASL_PASSWORD: str = os.getenv("KAFKA_SASL_PASSWORD", "")
+KAFKA_SSL_CAFILE: str = os.getenv("KAFKA_SSL_CAFILE", "")
+KAFKA_SSL_CERTFILE: str = os.getenv("KAFKA_SSL_CERTFILE", "")
+KAFKA_SSL_KEYFILE: str = os.getenv("KAFKA_SSL_KEYFILE", "")
+KAFKA_SSL_CHECK_HOSTNAME: bool = (
+    os.getenv("KAFKA_SSL_CHECK_HOSTNAME", "true").lower() == "true"
+)

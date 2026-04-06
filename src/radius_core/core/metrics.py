@@ -36,6 +36,7 @@ class MetricsManager:
         self._init_worker_info()
         self._init_redis_metrics()
         self._init_rabbitmq_metrics()
+        self._init_kafka_metrics()
         self._init_radius_metrics()
         self._init_http_metrics()
 
@@ -98,6 +99,34 @@ class MetricsManager:
             "rabbitmq_operations_total",
             "Total RabbitMQ operations",
             ["operation", "queue", "status"],
+        )
+
+    def _init_kafka_metrics(self):
+        """Инициализация метрик для Kafka операций."""
+        self.kafka_operations_duration = Histogram(
+            "kafka_operation_duration_seconds",
+            "Time spent on Kafka operations",
+            ["operation", "topic"],
+            buckets=[
+                0.001,
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.1,
+                0.25,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+            ],
+        )
+
+        self.kafka_operations_total = Counter(
+            "kafka_operations_total",
+            "Total Kafka operations",
+            ["operation", "topic", "status"],
         )
 
     def _init_radius_metrics(self):
@@ -260,6 +289,14 @@ class MetricsManager:
                 ).observe(duration)
                 self.rabbitmq_operations_total.labels(
                     operation=operation, queue=queue, status=status
+                ).inc()
+            elif category == "kafka":
+                topic = labels.get("topic", "default")
+                self.kafka_operations_duration.labels(
+                    operation=operation, topic=topic
+                ).observe(duration)
+                self.kafka_operations_total.labels(
+                    operation=operation, topic=topic, status=status
                 ).inc()
             elif category == "radius":
                 self.radius_function_duration.labels(function=operation).observe(

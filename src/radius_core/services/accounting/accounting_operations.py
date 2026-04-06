@@ -17,6 +17,8 @@ from ...models.schemas import (
 )
 
 from ...config import RADIUS_SESSION_PREFIX
+from ...config import KAFKA_ACCOUNTING_TOPIC
+from ...clients import kafka_send_accounting
 from ..storage.queue_operations import (
     send_to_session_queue,
     send_to_traffic_queue,
@@ -356,6 +358,9 @@ async def _handle_start_packet(
     asyncio.create_task(
         _send_to_queue_with_logging(send_to_session_queue, session_new, "session_queue")
     )
+    asyncio.create_task(
+        _send_to_kafka_with_logging(session_new, "kafka_accounting_start")
+    )
 
 
 async def _handle_interim_update_packet(
@@ -389,6 +394,9 @@ async def _handle_interim_update_packet(
     asyncio.create_task(
         _send_to_queue_with_logging(send_to_session_queue, session_new, "session_queue")
     )
+    # asyncio.create_task(
+    #     _send_to_kafka_with_logging(session_new, "kafka_accounting_interim")
+    # )
 
 
 async def _handle_stop_packet(
@@ -427,6 +435,9 @@ async def _handle_stop_packet(
             session_new,
             "traffic_queue",
         )
+    )
+    asyncio.create_task(
+        _send_to_kafka_with_logging(session_new, "kafka_accounting_stop")
     )
 
 
@@ -469,6 +480,9 @@ async def _merge_and_close_session(
             "traffic_queue",
         )
     )
+    asyncio.create_task(
+        _send_to_kafka_with_logging(session_to_close, "kafka_accounting_close")
+    )
 
     if send_coa:
         asyncio.create_task(
@@ -500,3 +514,23 @@ async def _send_to_queue_with_logging(queue_func, data, queue_name: str):
             logger.warning("Сообщение не отправлено в %s (вернулся False)", queue_name)
     except Exception as e:
         logger.error("Ошибка отправки в %s: %s", queue_name, e, exc_info=True)
+
+
+async def _send_to_kafka_with_logging(data: SessionData, event_name: str):
+    """Отправка accounting событий в Kafka с логированием ошибок."""
+    try:
+        result = await kafka_send_accounting(KAFKA_ACCOUNTING_TOPIC, data)
+        if not result:
+            logger.warning(
+                "Сообщение %s не отправлено в Kafka topic %s",
+                event_name,
+                KAFKA_ACCOUNTING_TOPIC,
+            )
+    except Exception as e:
+        logger.error(
+            "Ошибка отправки %s в Kafka topic %s: %s",
+            event_name,
+            KAFKA_ACCOUNTING_TOPIC,
+            e,
+            exc_info=True,
+        )

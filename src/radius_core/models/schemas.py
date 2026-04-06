@@ -529,4 +529,15 @@ class SessionsSearchResponse(BaseModel):
     login: str = Field(..., description="Логин, по которому выполнялся поиск")
 
 
+class KafkaTestSendRequest(BaseModel):
+    """Модель для тестовой отправки сообщения в Kafka."""
+
+    topic: Optional[str] = Field(
+        None, description="Kafka topic, если не указан - берется из конфига"
+    )
+    payload: Dict[str, Any] = Field(
+        default_factory=dict, description="JSON payload сообщения"
+    )
+
+
 RABBIT_MODELS = TrafficData | SessionData | AuthDataLog

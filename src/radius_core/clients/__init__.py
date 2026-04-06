@@ -11,6 +11,11 @@ from .rabbitmq_client import (
     rabbitmq_health_check,
     rmq_send_message,
 )
+from .kafka_client import (
+    kafka_health_check,
+    kafka_send_accounting,
+    kafka_send_message,
+)
 
 __all__ = [
     # Redis
@@ -22,4 +27,8 @@ __all__ = [
     # RabbitMQ
     "rabbitmq_health_check",
     "rmq_send_message",
+    # Kafka
+    "kafka_health_check",
+    "kafka_send_accounting",
+    "kafka_send_message",
 ]

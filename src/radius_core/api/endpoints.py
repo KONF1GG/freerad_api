@@ -21,16 +21,19 @@ from ..models.schemas import (
     CorrectRequest,
     SessionsSearchRequest,
     SessionsSearchResponse,
+    KafkaTestSendRequest,
 )
 from ..services import auth, check_and_correct_services, process_accounting
 from ..services.storage.search_operations import find_sessions_by_login
 
 from ..clients import redis_health_check, redis_client
 from ..clients import rabbitmq_health_check
+from ..clients import kafka_health_check
+from ..clients import kafka_send_message
 
 from ..core.dependencies import RedisDependency, RabbitMQDependency
 from ..core.metrics import metrics_manager, track_function, track_http_request
-from ..config import PROMETHEUS_MULTIPROC_DIR
+from ..config import PROMETHEUS_MULTIPROC_DIR, KAFKA_TEST_TOPIC
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +54,9 @@ async def health_check() -> Dict[str, Any]:
 
     redis_ok = await redis_health_check()
     rabbitmq_ok = await rabbitmq_health_check()
+    kafka_ok = await kafka_health_check()
 
-    status = "healthy" if redis_ok and rabbitmq_ok else "unhealthy"
+    status = "healthy" if redis_ok and rabbitmq_ok and kafka_ok else "unhealthy"
 
     # Получение статистики Redis pool
     waiting_tasks = 0
@@ -113,6 +117,7 @@ async def health_check() -> Dict[str, Any]:
         "services": {
             "redis": "ok" if redis_ok else "error",
             "rabbitmq": "ok" if rabbitmq_ok else "error",
+            "kafka": "ok" if kafka_ok else "error",
         },
         "redis_pool": {
             "available_permits": semaphore_value,
@@ -234,5 +239,41 @@ async def search_sessions_by_login(
             data.login,
             e,
             exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/kafka/test-send")
+@track_function("kafka", "api_test_send", topic="manual")
+@track_http_request(method="POST", endpoint="/kafka/test-send")
+async def kafka_test_send(data: KafkaTestSendRequest) -> Dict[str, Any]:
+    """Тестовая отправка сообщения в Kafka."""
+    topic = data.topic or KAFKA_TEST_TOPIC
+
+    if not topic:
+        raise HTTPException(
+            status_code=400,
+            detail="Kafka topic is empty. Set topic in request or KAFKA_TEST_TOPIC in env",
+        )
+
+    try:
+        result = await kafka_send_message(topic, data.payload)
+        if not result:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Kafka message was not sent to topic {topic}",
+            )
+
+        return {
+            "status": "success",
+            "action": "send",
+            "topic": topic,
+            "payload_size": len(str(data.payload)),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Ошибка тестовой отправки в Kafka topic %s: %s", topic, e, exc_info=True
         )
         raise HTTPException(status_code=500, detail=str(e)) from e

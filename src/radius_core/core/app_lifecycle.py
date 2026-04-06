@@ -16,6 +16,7 @@ from prometheus_client import multiprocess, CollectorRegistry
 from ..config import PROMETHEUS_MULTIPROC_DIR
 from ..clients.redis_client import redis_health_check, close_redis
 from ..clients.rabbitmq_client import rabbitmq_health_check, close_rabbitmq
+from ..clients.kafka_client import kafka_health_check, close_kafka
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,12 @@ class AppLifecycleManager:
         else:
             logger.info("RabbitMQ connection established")
 
+        if not await kafka_health_check():
+            logger.error("Kafka health check failed")
+            raise RuntimeError("Kafka unavailable")
+        else:
+            logger.info("Kafka connection established")
+
     def _cleanup_prometheus_metrics(self):
         """Безопасная очистка Prometheus multiprocess метрик для текущего процесса."""
         try:
@@ -124,6 +131,12 @@ class AppLifecycleManager:
             logger.info("RabbitMQ connections closed")
         except (ConnectionError, TimeoutError) as e:
             logger.warning("Error closing RabbitMQ connections: %s", e)
+
+        try:
+            await close_kafka()
+            logger.info("Kafka connections closed")
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning("Error closing Kafka connections: %s", e)
 
     @asynccontextmanager
     async def lifespan(self, app=None):
