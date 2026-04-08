@@ -94,7 +94,7 @@ async def process_accounting(
         # Если логин не найден, используем "фейковую" модель с известными параметрами
         login_data = login
         if not login_data:
-            params = {"vlan": vlan, "onu_mac": onu_mac}
+            params = {"vlan": vlan, "onu_mac": onu_mac, "auth_type": "UNAUTH"}
             if is_mac_username:
                 params["mac"] = username
             login_data = VideoLoginSearchResult(**params)
