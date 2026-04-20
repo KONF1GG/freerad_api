@@ -38,32 +38,62 @@ class KafkaClient:
         self._lock = asyncio.Lock()
         self._connection_established = False
 
-    def _validate_security_config(self) -> None:
-        """Проверяет обязательные security-параметры для SASL."""
+    def _resolve_security_protocol(self) -> str:
+        """Нормализует protocol к режиму без TLS/сертификатов."""
         protocol = KAFKA_SECURITY_PROTOCOL.upper()
+
+        if protocol == "SSL":
+            logger.warning("Kafka protocol SSL is disabled, using PLAINTEXT")
+            return "PLAINTEXT"
+
+        if protocol == "SASL_SSL":
+            logger.warning("Kafka protocol SASL_SSL is disabled, using SASL_PLAINTEXT")
+            return "SASL_PLAINTEXT"
+
+        if protocol not in {"PLAINTEXT", "SASL_PLAINTEXT"}:
+            logger.warning(
+                "Unknown Kafka protocol %s, using PLAINTEXT",
+                protocol,
+            )
+            return "PLAINTEXT"
+
+        return protocol
+
+    def _validate_security_config(self, protocol: str) -> None:
+        """Проверяет обязательные security-параметры для SASL."""
         if "SASL" in protocol and (not KAFKA_SASL_USERNAME or not KAFKA_SASL_PASSWORD):
             raise RuntimeError(
                 "Kafka SASL username/password are required for SASL security protocol"
             )
 
     async def _create_producer(self) -> AIOKafkaProducer:
-        self._validate_security_config()
-        return AIOKafkaProducer(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            client_id=KAFKA_CLIENT_ID,
-            acks=KAFKA_ACKS,
-            linger_ms=KAFKA_LINGER_MS,
-            compression_type=KAFKA_COMPRESSION_TYPE,
-            request_timeout_ms=KAFKA_REQUEST_TIMEOUT_MS,
-            max_request_size=KAFKA_MAX_REQUEST_SIZE,
-            security_protocol=KAFKA_SECURITY_PROTOCOL,
-            sasl_mechanism=KAFKA_SASL_MECHANISM,
-            sasl_plain_username=KAFKA_SASL_USERNAME or None,
-            sasl_plain_password=KAFKA_SASL_PASSWORD or None,
-            value_serializer=lambda value: json.dumps(
+        security_protocol = self._resolve_security_protocol()
+        self._validate_security_config(security_protocol)
+
+        config = {
+            "bootstrap_servers": KAFKA_BOOTSTRAP_SERVERS,
+            "client_id": KAFKA_CLIENT_ID,
+            "acks": KAFKA_ACKS,
+            "linger_ms": KAFKA_LINGER_MS,
+            "compression_type": KAFKA_COMPRESSION_TYPE,
+            "request_timeout_ms": KAFKA_REQUEST_TIMEOUT_MS,
+            "max_request_size": KAFKA_MAX_REQUEST_SIZE,
+            "security_protocol": security_protocol,
+            "value_serializer": lambda value: json.dumps(
                 value, ensure_ascii=False, default=str
             ).encode("utf-8"),
-        )
+        }
+
+        if "SASL" in security_protocol:
+            config.update(
+                {
+                    "sasl_mechanism": KAFKA_SASL_MECHANISM,
+                    "sasl_plain_username": KAFKA_SASL_USERNAME or None,
+                    "sasl_plain_password": KAFKA_SASL_PASSWORD or None,
+                }
+            )
+
+        return AIOKafkaProducer(**config)
 
     async def get_producer(self) -> AIOKafkaProducer:
         """Получить готовый producer, не пересоздавая его на каждый вызов."""
