@@ -394,9 +394,9 @@ async def _handle_interim_update_packet(
     asyncio.create_task(
         _send_to_queue_with_logging(send_to_session_queue, session_new, "session_queue")
     )
-    # asyncio.create_task(
-    #     _send_to_kafka_with_logging(session_new, "kafka_accounting_interim")
-    # )
+    asyncio.create_task(
+        _send_to_kafka_with_logging(session_new, "kafka_accounting_interim")
+    )
 
 
 async def _handle_stop_packet(
