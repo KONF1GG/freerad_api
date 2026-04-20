@@ -60,7 +60,6 @@ KAFKA_SECURITY_PROTOCOL: str = os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
 KAFKA_SASL_MECHANISM: str = os.getenv("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512")
 KAFKA_SASL_USERNAME: str = os.getenv("KAFKA_SASL_USERNAME", "")
 KAFKA_SASL_PASSWORD: str = os.getenv("KAFKA_SASL_PASSWORD", "")
-KAFKA_SSL_CAFILE: str = os.getenv("KAFKA_SSL_CAFILE", "")
-KAFKA_SSL_CHECK_HOSTNAME: bool = (
-    os.getenv("KAFKA_SSL_CHECK_HOSTNAME", "true").lower() == "true"
+KAFKA_REQUIRED_ON_STARTUP: bool = (
+    os.getenv("KAFKA_REQUIRED_ON_STARTUP", "false").lower() == "true"
 )

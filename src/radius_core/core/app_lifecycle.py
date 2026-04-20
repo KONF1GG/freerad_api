@@ -10,13 +10,18 @@
 import os
 import stat
 import logging
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from prometheus_client import multiprocess, CollectorRegistry
 
-from ..config import PROMETHEUS_MULTIPROC_DIR
+from ..config import (
+    PROMETHEUS_MULTIPROC_DIR,
+    KAFKA_REQUIRED_ON_STARTUP,
+    KAFKA_TEST_TOPIC,
+)
 from ..clients.redis_client import redis_health_check, close_redis
 from ..clients.rabbitmq_client import rabbitmq_health_check, close_rabbitmq
-from ..clients.kafka_client import kafka_health_check, close_kafka
+from ..clients.kafka_client import kafka_health_check, kafka_send_message, close_kafka
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +90,22 @@ class AppLifecycleManager:
                 del os.environ["prometheus_multiproc_dir"]
             return False
 
+    async def _send_kafka_startup_message(self):
+        """Публикует тестовое startup-сообщение в Kafka."""
+        payload = {
+            "event": "service_startup",
+            "service": "radius_core",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "pid": os.getpid(),
+        }
+        sent = await kafka_send_message(KAFKA_TEST_TOPIC, payload)
+        if sent:
+            logger.info("Kafka startup message sent to topic %s", KAFKA_TEST_TOPIC)
+        else:
+            logger.warning(
+                "Kafka startup message was not sent to topic %s", KAFKA_TEST_TOPIC
+            )
+
     async def _perform_health_checks(self):
         """Выполнение health checks для внешних сервисов."""
         # Health checks
@@ -100,11 +121,18 @@ class AppLifecycleManager:
         else:
             logger.info("RabbitMQ connection established")
 
-        if not await kafka_health_check():
-            logger.error("Kafka health check failed")
-            raise RuntimeError("Kafka unavailable")
+        kafka_ok = await kafka_health_check()
+        if not kafka_ok:
+            if KAFKA_REQUIRED_ON_STARTUP:
+                logger.error("Kafka health check failed")
+                raise RuntimeError("Kafka unavailable")
+            logger.warning(
+                "Kafka health check failed, but startup continues "
+                "(KAFKA_REQUIRED_ON_STARTUP=false)"
+            )
         else:
             logger.info("Kafka connection established")
+            await self._send_kafka_startup_message()
 
     def _cleanup_prometheus_metrics(self):
         """Безопасная очистка Prometheus multiprocess метрик для текущего процесса."""

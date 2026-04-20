@@ -450,8 +450,7 @@ class AuthDataLog(BaseModel):
     # Метка времени
     authdate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AuthResponse(BaseModel):

@@ -7,7 +7,6 @@
 import asyncio
 import json
 import logging
-import ssl
 from typing import Optional
 
 from aiokafka import AIOKafkaProducer
@@ -24,8 +23,6 @@ from ..config import (
     KAFKA_SASL_MECHANISM,
     KAFKA_SASL_USERNAME,
     KAFKA_SASL_PASSWORD,
-    KAFKA_SSL_CAFILE,
-    KAFKA_SSL_CHECK_HOSTNAME,
 )
 from ..models import SessionData
 from ..core.metrics import track_function
@@ -40,16 +37,6 @@ class KafkaClient:
         self._producer: Optional[AIOKafkaProducer] = None
         self._lock = asyncio.Lock()
         self._connection_established = False
-
-    def _build_ssl_context(self) -> ssl.SSLContext | None:
-        """Создает SSL context для Kafka, если используется SSL транспорт."""
-        if "SSL" not in KAFKA_SECURITY_PROTOCOL.upper():
-            return None
-
-        ssl_context = ssl.create_default_context(cafile=KAFKA_SSL_CAFILE or None)
-        ssl_context.check_hostname = KAFKA_SSL_CHECK_HOSTNAME
-
-        return ssl_context
 
     def _validate_security_config(self) -> None:
         """Проверяет обязательные security-параметры для SASL."""
@@ -73,7 +60,6 @@ class KafkaClient:
             sasl_mechanism=KAFKA_SASL_MECHANISM,
             sasl_plain_username=KAFKA_SASL_USERNAME or None,
             sasl_plain_password=KAFKA_SASL_PASSWORD or None,
-            ssl_context=self._build_ssl_context(),
             value_serializer=lambda value: json.dumps(
                 value, ensure_ascii=False, default=str
             ).encode("utf-8"),
@@ -93,6 +79,10 @@ class KafkaClient:
                         self._connection_established = True
                         logger.info("Соединение с Kafka успешно установлено")
                     except Exception:
+                        try:
+                            await self._producer.stop()
+                        except Exception:
+                            pass
                         self._connection_established = False
                         self._producer = None
                         logger.error("Не удалось установить соединение с Kafka")
