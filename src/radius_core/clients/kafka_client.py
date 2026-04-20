@@ -25,8 +25,6 @@ from ..config import (
     KAFKA_SASL_USERNAME,
     KAFKA_SASL_PASSWORD,
     KAFKA_SSL_CAFILE,
-    KAFKA_SSL_CERTFILE,
-    KAFKA_SSL_KEYFILE,
     KAFKA_SSL_CHECK_HOSTNAME,
 )
 from ..models import SessionData
@@ -50,12 +48,6 @@ class KafkaClient:
 
         ssl_context = ssl.create_default_context(cafile=KAFKA_SSL_CAFILE or None)
         ssl_context.check_hostname = KAFKA_SSL_CHECK_HOSTNAME
-
-        if KAFKA_SSL_CERTFILE and KAFKA_SSL_KEYFILE:
-            ssl_context.load_cert_chain(
-                certfile=KAFKA_SSL_CERTFILE,
-                keyfile=KAFKA_SSL_KEYFILE,
-            )
 
         return ssl_context
 
