@@ -534,6 +534,21 @@ class KafkaTestSendRequest(BaseModel):
     topic: Optional[str] = Field(
         None, description="Kafka topic, если не указан - берется из конфига"
     )
+    key: Optional[str] = Field(
+        None, description="Kafka key, если не указан - отправка без ключа"
+    )
+    payload: Dict[str, Any] = Field(
+        default_factory=dict, description="JSON payload сообщения"
+    )
+
+
+class KafkaRadiusTestSendRequest(BaseModel):
+    """Модель для ручной отправки сообщения в фиксированный Kafka topic radius.test."""
+
+    key: Optional[str] = Field(
+        None,
+        description="Kafka key, если не указан - берется из Acct-Unique-Session-Id или Acct-Session-Id в payload",
+    )
     payload: Dict[str, Any] = Field(
         default_factory=dict, description="JSON payload сообщения"
     )

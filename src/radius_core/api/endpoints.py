@@ -9,7 +9,7 @@
 
 import os
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -22,6 +22,7 @@ from ..models.schemas import (
     SessionsSearchRequest,
     SessionsSearchResponse,
     KafkaTestSendRequest,
+    KafkaRadiusTestSendRequest,
 )
 from ..services import auth, check_and_correct_services, process_accounting
 from ..services.storage.search_operations import find_sessions_by_login
@@ -38,6 +39,55 @@ from ..config import PROMETHEUS_MULTIPROC_DIR, KAFKA_TEST_TOPIC
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _extract_radius_test_key(
+    payload: Dict[str, Any], explicit_key: Optional[str] = None
+) -> Optional[str]:
+    """Возвращает key для radius.test, предпочитая явное значение."""
+    if explicit_key:
+        return explicit_key
+
+    return (
+        payload.get("Acct-Unique-Session-Id")
+        or payload.get("Acct_Unique_Session_Id")
+        or payload.get("Acct-Session-Id")
+        or payload.get("Acct_Session_Id")
+    )
+
+
+async def _send_kafka_message(
+    topic: str, payload: Dict[str, Any], key: Optional[str] = None
+) -> Dict[str, Any]:
+    """Общая логика отправки сообщения в Kafka с валидацией и обработкой ошибок."""
+    if not topic:
+        raise HTTPException(
+            status_code=400,
+            detail="Kafka topic is empty. Set topic in request or KAFKA_TEST_TOPIC in env",
+        )
+
+    try:
+        result = await kafka_send_message(topic, payload, key=key)
+        if not result:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Kafka message was not sent to topic {topic}",
+            )
+
+        return {
+            "status": "success",
+            "action": "send",
+            "topic": topic,
+            "key": key,
+            "payload_size": len(str(payload)),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Ошибка тестовой отправки в Kafka topic %s: %s", topic, e, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/metrics")
@@ -249,31 +299,15 @@ async def search_sessions_by_login(
 async def kafka_test_send(data: KafkaTestSendRequest) -> Dict[str, Any]:
     """Тестовая отправка сообщения в Kafka."""
     topic = data.topic or KAFKA_TEST_TOPIC
+    return await _send_kafka_message(topic, data.payload, key=data.key)
 
-    if not topic:
-        raise HTTPException(
-            status_code=400,
-            detail="Kafka topic is empty. Set topic in request or KAFKA_TEST_TOPIC in env",
-        )
 
-    try:
-        result = await kafka_send_message(topic, data.payload)
-        if not result:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Kafka message was not sent to topic {topic}",
-            )
-
-        return {
-            "status": "success",
-            "action": "send",
-            "topic": topic,
-            "payload_size": len(str(data.payload)),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            "Ошибка тестовой отправки в Kafka topic %s: %s", topic, e, exc_info=True
-        )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+@router.post("/kafka/radius-test-send")
+@track_function("kafka", "api_radius_test_send", topic="radius.test")
+@track_http_request(method="POST", endpoint="/kafka/radius-test-send")
+async def kafka_radius_test_send(
+    data: KafkaRadiusTestSendRequest,
+) -> Dict[str, Any]:
+    """Тестовая отправка сообщения в фиксированный Kafka topic radius.test."""
+    key = _extract_radius_test_key(data.payload, data.key)
+    return await _send_kafka_message(KAFKA_TEST_TOPIC, data.payload, key=key)

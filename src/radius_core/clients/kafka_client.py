@@ -120,11 +120,14 @@ class KafkaClient:
 
         return self._producer
 
-    async def send_message(self, topic: str, message: dict) -> bool:
+    async def send_message(
+        self, topic: str, message: dict, key: Optional[str] = None
+    ) -> bool:
         """Отправить сообщение в Kafka topic."""
         try:
             producer = await self.get_producer()
-            await producer.send_and_wait(topic, message)
+            kafka_key = key.encode("utf-8") if key is not None else None
+            await producer.send_and_wait(topic, message, key=kafka_key)
             return True
         except Exception as e:
             logger.error(
@@ -171,15 +174,18 @@ async def get_kafka_client() -> KafkaClient:
 async def kafka_send_accounting(topic: str, session: SessionData) -> bool:
     """Отправить accounting данные в Kafka."""
     payload = session.model_dump(by_alias=True)
+    kafka_key = session.Acct_Unique_Session_Id or session.Acct_Session_Id
     client = await get_kafka_client()
-    return await client.send_message(topic, payload)
+    return await client.send_message(topic, payload, key=kafka_key)
 
 
 @track_function("kafka", "send_message", topic="manual")
-async def kafka_send_message(topic: str, payload: dict) -> bool:
+async def kafka_send_message(
+    topic: str, payload: dict, key: Optional[str] = None
+) -> bool:
     """Отправить произвольное сообщение в Kafka (для тестовых вызовов API)."""
     client = await get_kafka_client()
-    return await client.send_message(topic, payload)
+    return await client.send_message(topic, payload, key=key)
 
 
 async def close_kafka():
