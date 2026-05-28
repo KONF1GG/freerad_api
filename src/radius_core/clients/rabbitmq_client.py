@@ -74,6 +74,10 @@ class RabbitMQClient:
         auth_log_queue = await self._channel.declare_queue(
             name=AMQP_AUTH_LOG_QUEUE,
             durable=True,
+            arguments={
+                "x-dead-letter-exchange": "dlx",
+                "x-dead-letter-routing-key": "dlq",
+            },
         )
         await auth_log_queue.bind(self._exchange, routing_key=AMQP_AUTH_LOG_QUEUE)
         self._auth_queue_ready = True
