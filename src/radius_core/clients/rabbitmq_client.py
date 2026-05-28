@@ -12,7 +12,13 @@ from typing import Optional
 
 import aio_pika
 from aio_pika import DeliveryMode, ExchangeType
-from ..config import AMQP_URL, AMQP_EXCHANGE, AMQP_SESSION_QUEUE, AMQP_TRAFFIC_QUEUE
+from ..config import (
+    AMQP_URL,
+    AMQP_EXCHANGE,
+    AMQP_SESSION_QUEUE,
+    AMQP_TRAFFIC_QUEUE,
+    AMQP_AUTH_LOG_QUEUE,
+)
 from ..models import RABBIT_MODELS
 from ..core.metrics import track_function
 
@@ -51,8 +57,9 @@ class RabbitMQClient:
                             durable=True,
                         )
 
-                        # Создаем очереди
-                        # await self._setup_queues()
+                        # Создаем очереди и bindings для всех маршрутов, которые
+                        # используются отправителями в этом сервисе.
+                        await self._setup_queues()
 
                         self._connection_established = True
                         logger.info("Соединение с RabbitMQ успешно установлено")
@@ -89,6 +96,13 @@ class RabbitMQClient:
         )
         await traffic_queue.bind(self._exchange, routing_key=AMQP_TRAFFIC_QUEUE)
 
+        # Очередь auth-логов
+        auth_log_queue = await self._channel.declare_queue(
+            name=AMQP_AUTH_LOG_QUEUE,
+            durable=True,
+        )
+        await auth_log_queue.bind(self._exchange, routing_key=AMQP_AUTH_LOG_QUEUE)
+
     async def send_message(
         self, routing_key: str, message: RABBIT_MODELS, persistent: bool = True
     ) -> bool:
@@ -119,7 +133,7 @@ class RabbitMQClient:
                 routing_key=routing_key,
             )
 
-#            logger.debug("Сообщение отправлено в %s: %s байт", routing_key, len(body))
+            #            logger.debug("Сообщение отправлено в %s: %s байт", routing_key, len(body))
             return True
 
         except (AttributeError, ConnectionError, TimeoutError) as e:
