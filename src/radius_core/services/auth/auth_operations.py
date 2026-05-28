@@ -45,7 +45,7 @@ def _build_auth_raw_log(
     """Собирает JSON-строку для auth_raw с request и response."""
     try:
         payload: Dict[str, Any] = {
-            "request": data.model_dump(by_alias=True, exclude_none=True)
+            "request": data.model_dump(mode="json", by_alias=True, exclude_none=True)
         }
 
         if auth_response_pretty:
@@ -54,7 +54,7 @@ def _build_auth_raw_log(
             except json.JSONDecodeError:
                 payload["response"] = auth_response_pretty
 
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False, default=str)
     except Exception:
         return None
 
