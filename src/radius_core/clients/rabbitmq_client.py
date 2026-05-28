@@ -15,8 +15,6 @@ from aio_pika import DeliveryMode, ExchangeType
 from ..config import (
     AMQP_URL,
     AMQP_EXCHANGE,
-    AMQP_SESSION_QUEUE,
-    AMQP_TRAFFIC_QUEUE,
     AMQP_AUTH_LOG_QUEUE,
 )
 from ..models import RABBIT_MODELS
@@ -34,6 +32,7 @@ class RabbitMQClient:
         self._exchange: Optional[aio_pika.abc.AbstractExchange] = None
         self._lock = asyncio.Lock()
         self._connection_established = False
+        self._auth_queue_ready = False
 
     async def get_channel(self) -> aio_pika.abc.AbstractChannel:
         """Получить канал RabbitMQ с автоматической настройкой"""
@@ -57,10 +56,6 @@ class RabbitMQClient:
                             durable=True,
                         )
 
-                        # Создаем очереди и bindings для всех маршрутов, которые
-                        # используются отправителями в этом сервисе.
-                        await self._setup_queues()
-
                         self._connection_established = True
                         logger.info("Соединение с RabbitMQ успешно установлено")
                     except Exception:
@@ -73,35 +68,15 @@ class RabbitMQClient:
         """Настройка очередей"""
         if not self._channel or not self._exchange:
             return
+        if self._auth_queue_ready:
+            return
 
-        # Очередь сессий
-        session_queue = await self._channel.declare_queue(
-            name=AMQP_SESSION_QUEUE,
-            durable=True,
-            arguments={
-                "x-message-ttl": 3600000,  # 1 час
-                "x-max-length": 10000,
-            },
-        )
-        await session_queue.bind(self._exchange, routing_key=AMQP_SESSION_QUEUE)
-
-        # Очередь трафика
-        traffic_queue = await self._channel.declare_queue(
-            name=AMQP_TRAFFIC_QUEUE,
-            durable=True,
-            arguments={
-                "x-message-ttl": 1800000,  # 30 минут
-                "x-max-length": 50000,
-            },
-        )
-        await traffic_queue.bind(self._exchange, routing_key=AMQP_TRAFFIC_QUEUE)
-
-        # Очередь auth-логов
         auth_log_queue = await self._channel.declare_queue(
             name=AMQP_AUTH_LOG_QUEUE,
             durable=True,
         )
         await auth_log_queue.bind(self._exchange, routing_key=AMQP_AUTH_LOG_QUEUE)
+        self._auth_queue_ready = True
 
     async def send_message(
         self, routing_key: str, message: RABBIT_MODELS, persistent: bool = True
@@ -111,6 +86,9 @@ class RabbitMQClient:
             if not self._exchange:
                 logger.error("Exchange not initialized")
                 return False
+
+            if routing_key == AMQP_AUTH_LOG_QUEUE:
+                await self._setup_queues()
 
             # Подготавливаем сообщение с алиасами (дефисами)
             body = json.dumps(
