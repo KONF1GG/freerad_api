@@ -43,20 +43,20 @@ def _build_auth_raw_log(
     data: AuthRequest, auth_response_pretty: str | None
 ) -> str | None:
     """Собирает JSON-строку для auth_raw с request и response."""
+    request_payload = data.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    payload: Dict[str, Any] = {"request": request_payload}
+
+    if auth_response_pretty:
+        try:
+            payload["response"] = json.loads(auth_response_pretty)
+        except Exception:
+            payload["response"] = auth_response_pretty
+
     try:
-        payload: Dict[str, Any] = {
-            "request": data.model_dump(mode="json", by_alias=True, exclude_none=True)
-        }
-
-        if auth_response_pretty:
-            try:
-                payload["response"] = json.loads(auth_response_pretty)
-            except json.JSONDecodeError:
-                payload["response"] = auth_response_pretty
-
         return json.dumps(payload, ensure_ascii=False, default=str)
     except Exception:
-        return None
+        return json.dumps({"request": request_payload}, ensure_ascii=False, default=str)
 
 
 async def _get_psiface_description(
