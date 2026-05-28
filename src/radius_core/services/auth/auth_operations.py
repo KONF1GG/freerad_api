@@ -39,6 +39,26 @@ def _format_auth_response_for_log(
         return None
 
 
+def _build_auth_raw_log(
+    data: AuthRequest, auth_response_pretty: str | None
+) -> str | None:
+    """Собирает JSON-строку для auth_raw с request и response."""
+    try:
+        payload: Dict[str, Any] = {
+            "request": data.model_dump(by_alias=True, exclude_none=True)
+        }
+
+        if auth_response_pretty:
+            try:
+                payload["response"] = json.loads(auth_response_pretty)
+            except json.JSONDecodeError:
+                payload["response"] = auth_response_pretty
+
+        return json.dumps(payload, ensure_ascii=False)
+    except Exception:
+        return None
+
+
 async def _get_psiface_description(
     nasportid: Dict[str, Any], redis, nas_ip: str | None
 ) -> str:
@@ -475,7 +495,7 @@ async def _save_auth_log(
             onu_mac_remote_id=mac_from_hex(data.ADSL_Agent_Remote_Id)
             if data.ADSL_Agent_Remote_Id
             else None,
-            auth_raw_pretty=auth_raw_pretty,
+            auth_raw=_build_auth_raw_log(data, auth_raw_pretty),
         )
         await send_auth_log_to_queue(log_entry)
     except (ValueError, TypeError, AttributeError) as log_err:
