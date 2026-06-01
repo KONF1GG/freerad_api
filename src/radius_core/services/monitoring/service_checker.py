@@ -2,7 +2,6 @@
 
 import logging
 import re
-import time
 import asyncio
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
@@ -19,7 +18,6 @@ from ..storage.search_operations import (
 from ...models import SessionData, LoginSearchResult
 from ...models.schemas import CorrectRequest, ServiceCheckResponse
 from ..coa.coa_operations import send_coa_session_kill, send_coa_session_set
-from .service_utils import check_service_expiry
 
 logger = logging.getLogger(__name__)
 
@@ -152,47 +150,65 @@ async def check_and_correct_service_state(
     else:
         # Роутер не заблокировал и услуга не должна быть заблокирована - проверяем скорость
         if speed:
+            active_service_name = service_name or "INET-FREEDOM"
+            current_service_name = parse_service_name(session.ERX_Service_Session)
+            expected_speed_kb = int(float(speed) * 1100)
             service_speed_mb = _parse_service_speed(session.ERX_Service_Session)
-            if service_speed_mb is not None:
-                try:
-                    expected_speed_kb = int(float(speed) * 1100)
+            try:
+                # Если текущее имя услуги уже не совпадает с ожидаемым, обновляем даже без парсинга скорости.
+                service_name_mismatch = current_service_name != active_service_name
+                speed_mismatch = (
+                    service_speed_mb is not None
+                    and abs(service_speed_mb - expected_speed_kb / 1000) >= 0.01
+                )
 
-                    if abs(service_speed_mb - expected_speed_kb / 1000) >= 0.01:
+                if service_name_mismatch or speed_mismatch or service_speed_mb is None:
+                    if service_name_mismatch:
+                        logger.warning(
+                            "Неправильное имя услуги для %s: ожидалось %s, получено %s",
+                            login_name,
+                            active_service_name,
+                            current_service_name,
+                        )
+                    elif speed_mismatch:
                         logger.warning(
                             "Неправильная скорость для %s: ожидалось %s k, получено %s Mb",
                             login_name,
                             expected_speed_kb,
                             service_speed_mb,
                         )
-                        # Используем имя сервиса из активного интервала
-                        active_service_name = service_name or "INET-FREEDOM"
-                        # Получаем текущее название услуги для деактивации
-                        current_service_name = parse_service_name(
-                            session.ERX_Service_Session
-                        )
-                        coa_attributes = {
-                            "ERX-Service-Activate:1": f"{active_service_name}({expected_speed_kb}k)",
-                            "ERX-Service-Deactivate": current_service_name
-                            or active_service_name,
-                        }
-                        reason = f"Speed mismatch for {login_name}: expected {expected_speed_kb}k, got {service_speed_mb}Mb"
-                        logger.info(
-                            "CoA SET: обновление скорости для сессии %s (%s), атрибуты: %s",
-                            session.Acct_Unique_Session_Id,
+                    else:
+                        logger.warning(
+                            "Не удалось распарсить скорость для %s, но услуга отличается от ожидаемой",
                             login_name,
-                            coa_attributes,
                         )
-                        await send_coa_session_set(
-                            session, channel, coa_attributes, reason=reason
-                        )
-                        return {
-                            "action": "update",
-                            "reason": "speed mismatch corrected",
-                            "session_id": session.Acct_Unique_Session_Id,
-                        }
-                except (ValueError, TypeError) as e:
-                    logger.error("Ошибка преобразования скорости %s: %s", speed, e)
-                    return None
+
+                    coa_attributes = {
+                        "ERX-Service-Activate:1": f"{active_service_name}({expected_speed_kb}k)",
+                        "ERX-Service-Deactivate": current_service_name
+                        or active_service_name,
+                    }
+                    reason = (
+                        f"Service mismatch for {login_name}: expected "
+                        f"{active_service_name}({expected_speed_kb}k), got {session.ERX_Service_Session}"
+                    )
+                    logger.info(
+                        "CoA SET: обновление сервиса для сессии %s (%s), атрибуты: %s",
+                        session.Acct_Unique_Session_Id,
+                        login_name,
+                        coa_attributes,
+                    )
+                    await send_coa_session_set(
+                        session, channel, coa_attributes, reason=reason
+                    )
+                    return {
+                        "action": "update",
+                        "reason": "service mismatch corrected",
+                        "session_id": session.Acct_Unique_Session_Id,
+                    }
+            except (ValueError, TypeError) as e:
+                logger.error("Ошибка преобразования скорости %s: %s", speed, e)
+                return None
     return None
 
 
