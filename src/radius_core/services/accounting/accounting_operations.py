@@ -13,7 +13,7 @@ from ...utils.data_prepare import get_username_onu_mac_vlan_from_data
 
 from ...models.schemas import (
     EnrichedSessionData,
-    VideoLoginSearchResult,
+    LoginSearchResult,
 )
 
 from ...config import RADIUS_SESSION_PREFIX
@@ -97,7 +97,7 @@ async def process_accounting(
             params = {"vlan": vlan, "onu_mac": onu_mac, "auth_type": "UNAUTH"}
             if is_mac_username:
                 params["mac"] = username
-            login_data = VideoLoginSearchResult(**params)
+            login_data = LoginSearchResult(**params)
 
         # Обогащаем данные сессии информацией о логине
         session_req = await enrich_session_with_login(session_req, login_data)
