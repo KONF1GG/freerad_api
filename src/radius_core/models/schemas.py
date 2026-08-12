@@ -1,5 +1,6 @@
 """Модели для работы с данными RADIUS."""
 
+from ast import alias
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
@@ -488,6 +489,8 @@ class AuthResponse(BaseModel):
         None, alias="control:Cleartext-Password"
     )
     control_auth_type: Optional[Dict[str, str]] = Field(None, alias="control:Auth-Type")
+
+    class_attr: Optional[str] = Field(None, alias="reply:Class")
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 

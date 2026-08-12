@@ -425,6 +425,7 @@ def _configure_regular_services(
         auth_response.reply_idle_timeout = "10"
 
     auth_response.reply_nas_port_id = f"{data.User_Name or ''} | {login.login or ''} | {data.ADSL_Agent_Remote_Id or ''}"
+    auth_response.class_attr = f"{login.login or ''}"
 
     # PPPoE
     if data.Framed_Protocol == "PPP":
